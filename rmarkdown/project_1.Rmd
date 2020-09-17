@@ -6,11 +6,29 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
 ```
 
 ## Introduction
 
 ## Data Description
+
+Description and context of the Life Expectancy (WHO) dataset can be found [here](https://www.kaggle.com/kumarajarshi/life-expectancy-who).
+
+```{r load-data}
+# Load data
+df <- read_csv(here::here("data - raw", "Life Expectancy Data.csv"))
+
+# Clean up column names
+df <- janitor::clean_names(df)
+
+# Several different ways of getting a high-level look at the data
+summary(df)
+glimpse(df)
+Hmisc::describe(df)
+psych::describe(df)
+skimr::skim(df)
+```
 
 ## Exploratory Data Analysis
 
