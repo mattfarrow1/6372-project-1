@@ -7,6 +7,10 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
+library(reshape2)
+library(knitr)
+library(scales)
+library(corrplot)
 ```
 
 ## Introduction
@@ -52,16 +56,29 @@ df <- janitor::clean_names(df)
 # Several different ways of getting a high-level look at the data
 summary(df)
 glimpse(df)
-# Hmisc::describe(df)
-# psych::describe(df)
-# skimr::skim(df)
+Hmisc::describe(df)
+psych::describe(df)
+skimr::skim(df)
 ```
 
 ## Exploratory Data Analysis
 
 ```{r}
+# Histograms
+ggplot(melt(df), aes(value)) +
+  geom_histogram() +
+  facet_wrap(~ variable, scales = "free")
+
+# Pct NA in each variable
+df_pct_na <- df %>% 
+  select_if(function(x) any(is.na(x))) %>% 
+  summarise_each(funs((sum(is.na(.)) / 2938))) %>% 
+  pivot_longer(cols = everything(), names_to = "variable", values_to = "pct") %>% 
+  mutate(pct = percent(pct))
+```
+
+```{r}
 # Correlation Analysis
-library(corrplot)
 
 # Drop categorical columns
 df_corr <- df %>% 
@@ -72,7 +89,20 @@ corrplot(cor(df_corr, use = "complete.obs"), method = "circle")
 corrplot(cor(df_corr, use = "complete.obs"), method = "pie")
 corrplot(cor(df_corr, use = "complete.obs"), method = "color")
 corrplot(cor(df_corr, use = "complete.obs"), method = "number")
+
+# Pairs plot
+GGally::ggpairs(df_corr, alpha = 0.5)
+ggsave("ggpairs.png", width = 17, height = 11, units = "in", dpi = "retina")
 ```
+
+```{r}
+# VIF analysis
+library(car)
+full_model <- lm(life_expectancy ~ ., data = df_corr)
+full_model_vif <- vif(full_model)
+full_model_vif <- tibble(variable = names(full_model_vif), vif = full_model_vif)
+```
+
 
 ```{r}
 # EDA
@@ -101,6 +131,7 @@ df %>%
   facet_wrap(~ status, scales = "free") +
   theme_minimal()
 ```
+
 
 
 ## Objective 1
