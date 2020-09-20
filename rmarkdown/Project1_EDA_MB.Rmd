@@ -1,0 +1,175 @@
+---
+title: "Project 1 EDA"
+author: "MB"
+date: "9/18/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+
+```{r import data}
+
+life <-
+  read.csv(
+    "C:/Users/megan/OneDrive/Grad school/DS6372/ProjectDetails_2_2_2_2_2/Life Expectancy Data.csv"
+  )
+head(life)
+str(life)
+summary(life)
+
+#visualize distribution of life expectancy
+hist(life$Life.expectancy)
+qqnorm(life$Life.expectancy)
+
+```
+
+There are a lot of NA's in this data set. Make a new data set without them.
+
+```{r}
+library(tidyverse)
+
+life$Status <- as.factor(life$Status)
+life$Country <- as.factor(life$Country)
+
+colSums(is.na(life))
+
+#if we want to replace with the mean value instead...
+#ds$ColumnName[is.na(ds$ColumnName)] <- mean(ds$ColumnName,na.rm = TRUE)
+
+```
+
+## Including Plots
+
+
+
+```{r}
+
+
+library(dplyr)
+life %>% 
+  group_by(Status) %>% 
+  summarize(count = n(),
+            avg_lifexp = mean(Life.expectancy, na.rm = TRUE),
+            avg_infmort = mean(infant.deaths, na.rm = TRUE),
+            avg_admort = mean(Adult.Mortality, na.rm = TRUE))
+
+life %>% 
+    group_by(Country) %>% 
+    summarize(n = n(),
+             avg_lifexp = mean(Life.expectancy),
+             avg_infmort = mean(infant.deaths),
+             avg_admort = mean(Adult.Mortality))
+
+```
+```{r echo = FALSE}
+#scatterplot matrix
+
+library(GGally)
+
+ggpairs(life, columns = 2:5)
+ggpairs(life, columns = 6:10)
+ggpairs(life, columns = 11:15)
+ggpairs(life, columns = 16:22)
+
+```
+
+Adult Mortality looks like two different groupings (possibly developed vs developing?)
+
+Several of the distributions of the other variables are definitely non-normal
+
+Thinness of 1.19 and 5.9 are very highly correlated to each other
+
+```{r}
+ggpairs(life, columns = 2:5, mapping = aes(color = Status))
+
+```
+
+Check correlation matrix for all variables
+```{r}
+life <- janitor::clean_names(life)
+colnames(life)
+ggcorr(life, label = TRUE, label_alpha = TRUE, layout.exp = 2)
+```
+
+```{r}
+#remove redundant variables - pick ones with less NA
+
+life_1 <- select(life, -c(under_five_deaths, gdp, thinness_1_19_years))
+colnames(life_1)
+ggcorr(life_1, label = TRUE, label_alpha = TRUE, layout.exp = 2)
+
+colSums(is.na(life_1))
+
+#remove all rows with NA life expectancy and population and limit scope to not include those countries
+life_1 <- life_1 %>%
+  drop_na(life_expectancy, population)
+colSums(is.na(life_1))
+```
+
+```{r}
+#check for outliers in each distribution of each variable to determine how to handle imputing other values
+
+for (col in 4:ncol(life_1)) {
+    hist(life_1[,col], main=names(life_1[col]))
+}
+
+```
+
+
+```{r}
+#impute values
+#alcohol & thinness- set NA to 0
+#hep_b, polio, total_exp, dip - set to median
+#bmi - set NA to mean
+
+#my very inefficient way to accomplish this :)
+life_1$hepatitis_b[is.na(life_1$hepatitis_b)] <- median(life_1$hepatitis_b,na.rm = TRUE)
+life_1$polio[is.na(life_1$polio)] <- median(life_1$polio,na.rm = TRUE)
+life_1$total_expenditure[is.na(life_1$total_expenditure)] <- median(life_1$total_expenditure,na.rm = TRUE)
+life_1$diphtheria[is.na(life_1$diphtheria)] <- median(life_1$diphtheria,na.rm = TRUE)
+life_1$bmi[is.na(life_1$bmi)] <- mean(life_1$bmi,na.rm = TRUE)
+life_1$alcohol[is.na(life_1$alcohol)] <- 0
+life_1$thinness_5_9_years[is.na(life_1$thinness_5_9_years)] <- 0
+
+#any more NAs?
+colSums(is.na(life_1))
+#we now have 2284 obs with 19 vars
+
+```
+
+
+```{r}
+#check new histograms to see if any shifts
+for (col in 4:ncol(life_1)) {
+    hist(life_1[,col], main=names(life_1[col]))
+}
+
+#save new dataset to csv
+life_clean.csv <- write.csv(life_1, file = "life_clean.csv")
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
