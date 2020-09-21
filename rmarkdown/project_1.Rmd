@@ -8,9 +8,11 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(reshape2)
-library(knitr)
-library(scales)
 library(corrplot)
+library(GGally)
+library(gt)
+# library(knitr)
+# library(scales)
 ```
 
 ## Introduction
@@ -19,32 +21,7 @@ library(corrplot)
 
 Description and context of the Life Expectancy (WHO) dataset can be found [here](https://www.kaggle.com/kumarajarshi/life-expectancy-who).
 
-|Field|Description|
-|---:|:---|
-|Country|Country|
-|Year|Year|
-|Status|Developed or Developing status|
-|Life expectancy|Life Expectancy in age|
-|Adult Mortality|Adult Mortality Rates of both sexes (probability of dying between 15 and 60 years per 1000 population)|
-|infant deaths|Number of Infant Deaths per 1000 population|
-|Alcohol|Alcohol, recorded per capita (15+) consumption (in litres of pure alcohol)|
-|percentage expenditure|Expenditure on health as a percene of Gross Domestic Product per capita(%)|
-|Hepatitis B|Hepatitis B (HepB) immunization coverage among 1-year-olds (%)|
-|Measles|Measles - number of reported cases per 1000 population|
-|BMI|Average Body Mass Index of entire population|
-|under-five deaths|Number of under-five deaths per 1000 population|
-|Polio|Polio (Pol3) immunization coverage among 1-year-olds (%)|
-|Total expenditure|General government expenditure on health as a percene of total government expenditure (%)|
-|Diphtheria|Diphtheria tetanus toxoid and pertussis (DTP3) immunization coverage among 1-year-olds (%)|
-|HIV/AIDS|Deaths per 1 000 live births HIV/AIDS (0-4 years)|
-|GDP|Gross Domestic Product per capita (in USD)|
-|Population|Population of the country|
-|thinness 1-19 years|Prevalence of thinness among children and adolescents for Age 10 to 19 (%)|
-|thinness 5-9 years|Prevalence of thinness among children for Age 5 to 9(%)|
-|Income composition of resources|Income composition of resources|
-|Schooling|Number of years of Schooling(years)|
-
-Data dictionary courtesy [Steve Ziring](https://www.kaggle.com/steveziring)
+## Data Wrangling
 
 ```{r load-data}
 # Load data
@@ -52,79 +29,207 @@ df <- read_csv(here::here("data - raw", "Life Expectancy Data.csv"))
 
 # Clean up column names
 df <- janitor::clean_names(df)
+```
 
+### Define the Baseline
+
+```{r baseline}
+mean(df$life_expectancy, na.rm = TRUE)
+sd(df$life_expectancy, na.rm = TRUE)
+```
+
+Our baseline life expectancy on the original data is 69.25 years with a standard deviation of 9.52. This is the number we're trying to beat with our model(s).
+
+### Examing the Data
+
+There are several different ways to look at the data. Here are two common ones from base R and the tidyverse along with three, more detailed, views. 
+
+```{r look-at-data}
 # Several different ways of getting a high-level look at the data
-summary(df)
+# summary(df)
 glimpse(df)
-Hmisc::describe(df)
-psych::describe(df)
-skimr::skim(df)
+# Hmisc::describe(df$population)
+# psych::describe(df)
+# skimr::skim(df)
+```
+
+### Convert Factors
+
+Before we get started, let's convert the country and status variables to factors. 
+
+```{r convert-to-factor}
+# Convert country and status to factors
+df$country <- as_factor(df$country)
+df$status  <- as_factor(df$status)
+```
+
+### Deal with Missing Values
+
+```{r count-na}
+# How many NAs do we have in the data?
+colSums(is.na(df))
+
+# Pct NA in each variable
+df %>% 
+  select_if(function(x) any(is.na(x))) %>% 
+  summarise_each(funs((sum(is.na(.)) / 2938))) %>% 
+  pivot_longer(cols = everything(), names_to = "variable", values_to = "pct") %>% 
+  gt() %>% 
+  tab_header(title = "Percentage of Missing Values",
+             subtitle = "by Variable") %>% 
+  fmt_percent(columns = vars(pct))
+```
+
+There are quite a few missing values in the data. We'll look at how we might handle them. 
+
+```{r}
+# For developing and developed countries, look at the means for life expectancy, infant and adult mortality.
+df %>% 
+  group_by(status) %>% 
+  summarise(count = n(),
+            avg_life_exp = mean(life_expectancy, na.rm = TRUE),
+            avg_inf_mort = mean(infant_deaths, na.rm = TRUE),
+            ave_ad_mort = mean(adult_mortality, na.rm = TRUE)) %>% 
+  gt() %>% 
+  tab_header(title = "Variable Comparison by Status")
+
+# Repeat the same exercise by country
+df %>% 
+  group_by(country) %>% 
+  summarise(count = n(),
+            avg_life_exp = mean(life_expectancy, na.rm = TRUE),
+            avg_inf_mort = mean(infant_deaths, na.rm = TRUE),
+            ave_ad_mort = mean(adult_mortality, na.rm = TRUE)) %>% 
+  gt() %>% 
+  tab_header(title = "Variable Comparison by Country") %>% 
+  cols_align(columns = vars(country), align = "left")
+```
+
+#### Correlation Plots
+
+```{r}
+# Inspect variables using ggpairs
+ggpairs(df, columns = 2:5)
+ggpairs(df, columns = 6:10)
+ggpairs(df, columns = 11:15)
+ggpairs(df, columns = 16:22)
+```
+
+> Megan's Notes
+> 
+> - Adult Mortality looks like two different groupings (possibly developed vs developing?)
+> - Several of the distributions of the other variables are definitely non-normal
+> - Thinness of 1.19 and 5.9 are very highly correlated to each other
+
+```{r}
+# Re-run initial pairs plot, separating status by color
+ggpairs(df, columns = 2:5, mapping = aes(color = status))
+```
+
+```{r}
+# Run a correlation matrix of the variables
+df %>% 
+  ggcorr(label = TRUE, label_alpha = TRUE, layout.exp = 2)
+
+# Define redundant variables
+exclude <- c("under_five_deaths", "gdp", "thinness_1_19_years")
+df_less_exclude <- df %>% 
+  select(-exclude)
+
+# Re-run correlation matrix excluding the identified columns
+df_less_exclude %>% 
+  ggcorr(label = TRUE, label_alpha = TRUE, layout.exp = 2)
+```
+
+#### Clean up NAs
+
+```{r}
+# Drop rows with NA life expectancy and population and limit scope to not
+# include those countries
+df_less_exclude <- df_less_exclude %>% 
+  filter(!is.na(life_expectancy),
+         !is.na(population))
+
+# Check for outliers in each distribution of each variable to determine how to
+# handle imputing other values
+df_less_exclude %>% 
+  select(-c(1:3)) %>% 
+  reshape2::melt() %>% 
+  ggplot(aes(value)) + 
+  geom_histogram() + 
+  facet_wrap(~ variable, scales = "free") +
+  labs(title = "Histogram of Variables 4:ncol()") +
+  theme_minimal()
+```
+
+```{r}
+# Impute values
+# Alcohol & thinness- set NA to 0
+# hep_b, polio, total_exp, dip - set to median
+# bmi - set NA to mean
+df_imputed <- df_less_exclude %>%
+  mutate(
+    alcohol = replace_na(alcohol, 0),
+    thinness_5_9_years = replace_na(thinness_5_9_years, 0),
+    hepatitis_b = replace_na(hepatitis_b, median(hepatitis_b, na.rm = TRUE)),
+    total_expenditure = replace_na(total_expenditure, median(total_expenditure, na.rm = TRUE)),
+    diphtheria = replace_na(diphtheria, median(diphtheria, na.rm = TRUE)),
+    bmi = replace_na(bmi, mean(bmi, na.rm = TRUE))
+  )
+
+# Are there any other NAs?
+colSums(is.na(df_imputed))
+```
+
+```{r}
+# Re-check the histograms after imputing values
+df_imputed %>% 
+  select(-c(1:3)) %>% 
+  reshape2::melt() %>% 
+  ggplot(aes(value)) + 
+  geom_histogram() + 
+  facet_wrap(~ variable, scales = "free") +
+  labs(title = "Histogram of Variables 4:ncol()") +
+  theme_minimal()
 ```
 
 ## Exploratory Data Analysis
 
 ```{r}
-# Histograms
-ggplot(melt(df), aes(value)) +
-  geom_histogram() +
-  facet_wrap(~ variable, scales = "free")
-
-# Pct NA in each variable
-df_pct_na <- df %>% 
-  select_if(function(x) any(is.na(x))) %>% 
-  summarise_each(funs((sum(is.na(.)) / 2938))) %>% 
-  pivot_longer(cols = everything(), names_to = "variable", values_to = "pct") %>% 
-  mutate(pct = percent(pct))
-```
-
-```{r}
-# Correlation Analysis
-
-# Drop categorical columns
-df_corr <- df %>% 
-  select(-c(country, status))
-
-# Four different ways to visualize
-corrplot(cor(df_corr, use = "complete.obs"), method = "circle")
-corrplot(cor(df_corr, use = "complete.obs"), method = "pie")
-corrplot(cor(df_corr, use = "complete.obs"), method = "color")
-corrplot(cor(df_corr, use = "complete.obs"), method = "number")
-
-# Pairs plot
-GGally::ggpairs(df_corr, alpha = 0.5)
-ggsave("ggpairs.png", width = 17, height = 11, units = "in", dpi = "retina")
-```
-
-```{r}
 # VIF analysis
 library(car)
-full_model <- lm(life_expectancy ~ ., data = df_corr)
-full_model_vif <- vif(full_model)
-full_model_vif <- tibble(variable = names(full_model_vif), vif = full_model_vif)
-```
 
+# Build model
+full_model <- lm(life_expectancy ~ ., data = df_imputed)
+
+# Check for alias
+alias(lm(life_expectancy ~ ., data = df_imputed))
+
+# full_model_vif <- vif(full_model)
+# full_model_vif <- tibble(variable = names(full_model_vif), vif = full_model_vif)
+```
 
 ```{r}
 # EDA
-df %>% 
+df_imputed %>% 
   ggplot(aes(life_expectancy, schooling)) +
   geom_point(alpha = 0.4) +
   labs(title = "Life Expectancy EDA") +
   theme_minimal()
 
-df %>% 
+df_imputed %>% 
   ggplot(aes(life_expectancy, income_composition_of_resources)) +
   geom_point(alpha = 0.4) +
   labs(title = "Life Expectancy EDA") +
   theme_minimal()
 
-df %>% 
+df_imputed %>% 
   ggplot(aes(life_expectancy, log(hiv_aids))) +
   geom_point(alpha = 0.4) +
   labs(title = "Life Expectancy EDA") +
   theme_minimal()
 
-df %>% 
+df_imputed %>% 
   ggplot(aes(life_expectancy, reorder(country, life_expectancy))) +
   geom_boxplot() +
   geom_jitter(alpha = 0.2) +
