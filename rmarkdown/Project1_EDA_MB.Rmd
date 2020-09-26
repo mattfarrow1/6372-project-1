@@ -324,6 +324,23 @@ lm4pred <- lm(life_expectancy ~., data = trainSet2[,-1])
 summary(lm4pred)
 
 ```
+```{r}
+#visualize model fit
+plot(lm4pred$fitted.values,trainSet2$life_expectancy,xlab="Predicted",ylab="Life Expectancy")
+abline(0,1)
+
+linear_prediction <- predict(lm4pred, testSet2)
+plot(linear_prediction, testSet2$life_expectancy)
+abline(0,1)
+
+#metrics
+testASE.lmpred<-mean((testSet2$life_expectancy-linear_prediction)^2)
+testASE.lmpred
+
+```
+
+```
+
 
 ```{r}
 
