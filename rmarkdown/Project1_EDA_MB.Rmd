@@ -43,9 +43,6 @@ colSums(is.na(life))
 
 ```
 
-## Including Plots
-
-
 
 ```{r}
 
@@ -66,6 +63,7 @@ life %>%
              avg_admort = mean(Adult.Mortality))
 
 ```
+
 ```{r echo = FALSE}
 #scatterplot matrix
 
@@ -127,17 +125,20 @@ for (col in 4:ncol(life_1)) {
 #hep_b, polio, total_exp, dip - set to median
 #bmi - set NA to mean
 
+#create new data set for imputation
+life_2 <- life_1
+
 #my very inefficient way to accomplish this :)
-life_1$hepatitis_b[is.na(life_1$hepatitis_b)] <- median(life_1$hepatitis_b,na.rm = TRUE)
-life_1$polio[is.na(life_1$polio)] <- median(life_1$polio,na.rm = TRUE)
-life_1$total_expenditure[is.na(life_1$total_expenditure)] <- median(life_1$total_expenditure,na.rm = TRUE)
-life_1$diphtheria[is.na(life_1$diphtheria)] <- median(life_1$diphtheria,na.rm = TRUE)
-life_1$bmi[is.na(life_1$bmi)] <- mean(life_1$bmi,na.rm = TRUE)
-life_1$alcohol[is.na(life_1$alcohol)] <- 0
-life_1$thinness_5_9_years[is.na(life_1$thinness_5_9_years)] <- 0
+life_2$hepatitis_b[is.na(life_2$hepatitis_b)] <- median(life_2$hepatitis_b,na.rm = TRUE)
+life_2$polio[is.na(life_2$polio)] <- median(life_2$polio,na.rm = TRUE)
+life_2$total_expenditure[is.na(life_2$total_expenditure)] <- median(life_2$total_expenditure,na.rm = TRUE)
+life_2$diphtheria[is.na(life_2$diphtheria)] <- median(life_2$diphtheria,na.rm = TRUE)
+life_2$bmi[is.na(life_2$bmi)] <- mean(life_1$bmi,na.rm = TRUE)
+life_2$alcohol[is.na(life_2$alcohol)] <- 0
+life_2$thinness_5_9_years[is.na(life_2$thinness_5_9_years)] <- 0
 
 #any more NAs?
-colSums(is.na(life_1))
+colSums(is.na(life_2))
 #we now have 2284 obs with 19 vars
 
 ```
@@ -145,27 +146,71 @@ colSums(is.na(life_1))
 
 ```{r}
 #check new histograms to see if any shifts
-for (col in 4:ncol(life_1)) {
-    hist(life_1[,col], main=names(life_1[col]))
+for (col in 4:ncol(life_2)) {
+    hist(life_2[,col], main=names(life_2[col]))
 }
 
 #save new dataset to csv
-life_clean.csv <- write.csv(life_1, file = "life_clean.csv")
+write.csv(life_2, file = "life_imputed.csv")
+write.csv(life_1, file = "life_NA_pop_LE.csv")
+
+```
+
+
+```{r}
+##################
+# Train/test sets
+##################
+library(caret)
+
+#standardize the data to prep for KNN first - everything except life expectancy
+preProcValues <- preProcess(life_2[,-4], method = c("scale"))
+
+life_3 <- predict(preProcValues, life_2)
+
+#visualize the scaling
+for (col in 4:ncol(life_3)) {
+    hist(life_3[,col], main=names(life_3[col]))
+}
+
+#split the data
+
+# set random seed
+set.seed(123) 
+# create the training partition that is 75% of total obs
+inTraining <- createDataPartition(life_3$life_expectancy, p=0.75, list=FALSE)
+# create training/testing dataset
+trainSet <- life_3[inTraining,]   
+testSet <- life_3[-inTraining,]   
+# verify number of obs 
+nrow(trainSet)
+nrow(testSet) 
+
 
 ```
 
 
 ```{r}
 
+set.seed(567)
+ctrl <- trainControl(method="repeatedcv",repeats = 5, returnResamp = "all") 
+
+knnFit <- train(life_expectancy ~ ., data = trainSet, method = "knn",  trControl = ctrl, tuneLength = 10)
+knnFit
 ```
 
 
 ```{r}
 
-```
+#check metrics on test set
+Predictions_knn5 <- predict(knnFit,newdata=testSet)
+#performance measurement
+postResample(testSet$life_expectancy,Predictions_knn5)
 
-
-```{r}
+trellis.par.set(caretTheme())
+plot(knnFit)  
+plot(knnFit, metric = "Rsquared")
+plot(knnFit, metric = "MAE")
 
 ```
 
