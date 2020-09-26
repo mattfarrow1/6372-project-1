@@ -216,5 +216,47 @@ plot(knnFit, metric = "MAE")
 
 
 ```{r}
+#try knn with k less than 5
+knnFit2 <- train(life_expectancy ~ ., data = trainSet, method = "knn",  trControl = ctrl, tuneGrid = expand.grid(k = c(1,3,5)))
+knnFit2
 
+```
+
+```{r}
+
+#check metrics on test set
+Predictions_knn3 <- predict(knnFit2,newdata=testSet)
+#performance measurement
+postResample(testSet$life_expectancy,Predictions_knn3)
+
+trellis.par.set(caretTheme())
+plot(knnFit2)  
+plot(knnFit2, metric = "Rsquared")
+plot(knnFit2, metric = "MAE")
+
+```
+
+##Testing with Trees
+
+``` {r}
+install.packages("tree")
+library(tree)
+#have to remove country because this tree function has max 32 levels
+tree1 <- tree(life_expectancy ~., data = trainSet[,-1])
+summary(tree1)
+plot(tree1)
+
+```
+
+``` {r}
+#improve tree performance
+
+cv.tree1 <- cv.tree(tree1)
+plot(cv.tree1$size,cv.tree1$dev,type='b')
+```
+``` {r}
+#check predictions
+yhat = predict(tree1,newdata=testSet[,-1])
+plot(yhat,testSet$life_expectancy)
+mean((yhat - testSet$life_expectancy)^2)
 ```
