@@ -162,11 +162,24 @@ write.csv(life_1, file = "life_NA_pop_LE.csv")
 # Train/test sets
 ##################
 library(caret)
+library(readr)
+
+#load data
+life_2 <- read.csv(file = "life_imputed.csv", header = TRUE) %>%
+  select(2:20)
+life_1 <- read.csv(file = "life_NA_pop_LE.csv", header = TRUE) %>%
+  select(2:20)
 
 #standardize the data to prep for KNN first - everything except life expectancy
 preProcValues <- preProcess(life_2[,-4], method = c("scale"))
 
 life_3 <- predict(preProcValues, life_2)
+
+#save standardized data set
+write.csv(life_3, file = "life_standard.csv")
+#load back in
+life_3 <- read.csv(file = "life_standard.csv", header=TRUE) %>%
+  select(2:20)
 
 #visualize the scaling
 for (col in 4:ncol(life_3)) {
@@ -186,9 +199,131 @@ testSet <- life_3[-inTraining,]
 nrow(trainSet)
 nrow(testSet) 
 
+#split non-standardized data for trees
+set.seed(123) 
+# create the training partition that is 75% of total obs
+inTraining2 <- createDataPartition(life_2$life_expectancy, p=0.75, list=FALSE)
+# create training/testing dataset
+trainSet2 <- life_2[inTraining2,]   
+testSet2 <- life_2[-inTraining2,]   
+# verify number of obs 
+nrow(trainSet2)
+nrow(testSet2) 
+
+
+#split the complete data set without imputation for linear regression & variable selection **HAS NA**
+set.seed(123) 
+# create the training partition that is 75% of total obs
+inTraining3 <- createDataPartition(life_1$life_expectancy, p=0.75, list=FALSE)
+# create training/testing dataset
+trainSet3 <- life_1[inTraining3,]   
+testSet3 <- life_1[-inTraining3,]   
+# verify number of obs 
+nrow(trainSet3)
+nrow(testSet3) 
 
 ```
 
+```{r}
+library(leaps)
+#testing out forward selection
+reg.fwd=regsubsets(life_expectancy~.,data=trainSet2,method="forward",nvmax=5)
+reg.fwd
+
+#remove country because this looks like it is causing issues
+reg.fwd=regsubsets(life_expectancy~.,data=trainSet2[,-1],method="forward",nvmax=18)
+reg.fwd
+
+#remove country because this looks like it is causing issues
+reg.back=regsubsets(life_expectancy~.,data=trainSet2[,-1],method="backward",nvmax=18)
+reg.back
+
+```
+
+```{r, echo=T}
+#Really handy predict function
+predict.regsubsets =function (object , newdata ,id ,...){
+  form=as.formula (object$call [[2]])
+  mat=model.matrix(form ,newdata )
+  coefi=coef(object ,id=id)
+  xvars=names(coefi)
+  mat[,xvars]%*%coefi
+}
+```
+
+## Predictions for Forward Selection
+
+```{r, echo=T, fig.width=5,fig.height=4}
+testASE.fwd<-c()
+for (i in 1:17){
+  predictions<-predict.regsubsets(object=reg.fwd,newdata=testSet2,id=i) 
+  testASE.fwd[i]<-mean((testSet2$life_expectancy-predictions)^2)
+}
+par(mfrow=c(1,1))
+plot(1:17,testASE.fwd,type="l",xlab="# of predictors",ylab="test vs train ASE")
+index<-which(testASE.fwd==min(testASE.fwd))
+points(index,testASE.fwd[index],col="red",pch=10)
+rss<-summary(reg.fwd)$rss
+lines(1:17,rss/570,lty=3,col="blue")  #Dividing by 570 since ASE=RSS/sample size
+```
+
+## Predictions for Backward Selection
+
+```{r, echo=T, fig.width=5,fig.height=4}
+testASE.back<-c()
+#note my index is to 20 since that what I set it in regsubsets
+for (i in 1:17){
+  predictions<-predict.regsubsets(object=reg.back,newdata=testSet2,id=i) 
+  testASE.back[i]<-mean((testSet$life_expectancy-predictions)^2)
+}
+par(mfrow=c(1,1))
+plot(1:17,testASE.back,type="l",xlab="# of predictors",ylab="test vs train ASE")
+index<-which(testASE.back==min(testASE.back))
+points(index,testASE.back[index],col="red",pch=10)
+rss<-summary(reg.back)$rss
+lines(1:17,rss/570,lty=3,col="blue")  #Dividing by 100 since ASE=RSS/sample size
+```
+Both forward and backward selection say to use all the predictors.
+
+##LASSO
+
+```{r}
+#LASSO
+library(glmnet)
+#Formatting data for GLM net
+x=model.matrix(life_expectancy~.,trainSet2)[,-1]
+y=trainSet2$life_expectancy
+
+xtest<-model.matrix(life_expectancy~.,testSet2)[,-1]
+ytest<-testSet2$life_expectancy
+
+
+
+grid=10^seq(10,-2, length =100)
+lasso.mod=glmnet(x,y,alpha=1, lambda =grid)
+
+cv.out=cv.glmnet(x,y,alpha=1) #alpha=1 performs LASSO
+plot(cv.out)
+bestlambda<-cv.out$lambda.min  #Optimal penalty parameter.  You can make this call visually.
+bestlambda
+lasso.pred=predict (lasso.mod ,s=bestlambda ,newx=xtest)
+
+testMSE_LASSO<-mean((ytest-lasso.pred)^2)
+testMSE_LASSO
+```
+
+```{r, echo=T}
+coef(lasso.mod,s=bestlambda)
+```
+
+##Linear Model for Prediction
+
+```{r}
+#use everything except country
+lm4pred <- lm(life_expectancy ~., data = trainSet2[,-1])
+summary(lm4pred)
+
+```
 
 ```{r}
 
@@ -239,24 +374,85 @@ plot(knnFit2, metric = "MAE")
 ##Testing with Trees
 
 ``` {r}
-install.packages("tree")
+#install.packages("tree")
 library(tree)
 #have to remove country because this tree function has max 32 levels
-tree1 <- tree(life_expectancy ~., data = trainSet[,-1])
+tree1 <- tree(life_expectancy ~., data = trainSet2[,-1])
 summary(tree1)
 plot(tree1)
 
 ```
 
 ``` {r}
-#improve tree performance
+#check tree performance
 
 cv.tree1 <- cv.tree(tree1)
 plot(cv.tree1$size,cv.tree1$dev,type='b')
 ```
 ``` {r}
 #check predictions
-yhat = predict(tree1,newdata=testSet[,-1])
-plot(yhat,testSet$life_expectancy)
-mean((yhat - testSet$life_expectancy)^2)
+yhat = predict(tree1,newdata=testSet2[,-1])
+plot(yhat,testSet2$life_expectancy)
+abline(0,1)
+mean((yhat - testSet2$life_expectancy)^2)
 ```
+
+
+```{r}
+#try random forest compared to single tree model
+#install.packages("randomForest")
+library(randomForest)
+set.seed(1)
+#have to remove country again
+rfFit <- randomForest(life_expectancy ~., data = trainSet2[,-1])
+rfFit
+```
+
+
+```{r}
+#testing using all predictors for each tree
+set.seed(1)
+#have to remove country again
+rfFit2 <- randomForest(life_expectancy ~., data = trainSet2[,-1], mtry = 17)
+rfFit2
+
+```
+
+
+```{r}
+#compare y-hat for the two random forest models
+yhat.rf <- predict(rfFit, newdata=testSet[,-1])
+yhat.rf2 <- predict(rfFit2, newdata=testSet[,-1])
+
+plot(yhat.rf,testSet2$life_expectancy)
+abline(0,1)
+
+plot(yhat.rf2,testSet2$life_expectancy)
+abline(0,1)
+```
+
+
+```{r}
+#random forest using caret
+
+```
+
+
+```{r}
+
+
+```
+
+
+```{r}
+
+
+```
+
+
+```{r}
+
+
+```
+
+
