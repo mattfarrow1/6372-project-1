@@ -1,0 +1,94 @@
+---
+title: "Project 1"
+author: "Matt Farrow"
+date: "9/23/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(broom)
+library(hrbrthemes)
+library(car)
+
+options(scipen = 50)
+
+# Load data
+df <- read_csv(here::here("data - raw", "Life Expectancy Data.csv"))
+# Clean up column names
+df <- janitor::clean_names(df)
+# Convert country and status to factors
+df$country <- as_factor(df$country)
+df$status  <- as_factor(df$status)
+```
+
+## Cleanup
+
+```{r}
+# Define leakage columns
+leakage <- c("income_composition_of_resources", 
+             "percentage_expenditure", 
+             "infant_deaths", 
+             "under_five_deaths", 
+             "adult_mortality")
+
+# Remove leakage columns
+df <- df %>% 
+  select(-leakage)
+
+# Filter out blank gdp and population rows
+df <- df %>% 
+  filter(!is.na(gdp),
+         !is.na(population))
+
+# Exclude country and year
+df <- df %>% 
+  select(-c(country, year))
+```
+
+## Generate Model
+
+```{r}
+# Generate model
+df_model <- lm(life_expectancy ~., data = df)
+
+# Model Summaries
+summary(df_model)                      # summary
+confint(df_model)                      # confidence intervals
+df_model_augment <- augment(df_model)  # append residuals, cooks d, etc. 
+
+# Calculate VIF values of model
+df_model_vif <- tibble(variable = names(vif(df_model)),
+       vif = vif(df_model))
+```
+
+## Plotting
+
+```{r}
+# Plot fitted vs. residuals
+df_model_augment %>% 
+  ggplot(aes(.fitted, .resid)) +
+  geom_point(alpha = 0.3) +
+  labs(title = "Fitted vs. Residuals for df_model_augment") +
+  theme_ipsum()
+
+```
+
+
+## Forwad, Backward, and Stepwise
+
+```{r}
+library(MASS)
+
+# Forward, backward, and stepwise models
+df_model_f <- stepAIC(df_model, direction = "forward", trace = FALSE)
+summary(df_model_f)
+
+df_model_b <- stepAIC(df_model, direction = "backward", trace = FALSE)
+summary(df_model_b)
+
+df_model_s <- stepAIC(df_model, direction = "both", trace = FALSE)
+summary(df_model_s)
+```
+
