@@ -8,11 +8,13 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
-library(broom)
+library(tidymodels)
+# library(broom)  # loaded by tidymodels
 library(hrbrthemes)
 library(car)
+# library(caret)
 
-options(scipen = 50)
+options(scipen = 999)
 
 # Load data
 df <- read_csv(here::here("data - raw", "Life Expectancy Data.csv"))
@@ -35,7 +37,7 @@ leakage <- c("income_composition_of_resources",
 
 # Remove leakage columns
 df <- df %>% 
-  select(-leakage)
+  select(-all_of(leakage))
 
 # Filter out blank gdp and population rows
 df <- df %>% 
@@ -46,12 +48,14 @@ df <- df %>%
 df <- df %>% 
   select(-c(country, year))
 ```
-
+ 
 ## Generate Model
+
+### Model 1
 
 ```{r}
 # Generate model
-df_model <- lm(life_expectancy ~., data = df)
+df_model <- lm(life_expectancy ~ ., data = df)
 
 # Model Summaries
 summary(df_model)                      # summary
@@ -62,6 +66,23 @@ df_model_augment <- augment(df_model)  # append residuals, cooks d, etc.
 df_model_vif <- tibble(variable = names(vif(df_model)),
        vif = vif(df_model))
 ```
+
+### Model 2
+
+```{r}
+df_model_2 <- df %>% 
+  # select(-c("population",
+  #            "total_expenditure")) %>% 
+  nest(data = c(-status)) %>% 
+  mutate(
+    fit = map(data, ~ lm(life_expectancy ~ ., data = .x)),
+    tidied = map(fit, tidy)
+  ) %>% 
+  unnest(tidied) %>% 
+  select(-data, -fit) %>% 
+  mutate(p.value = round(p.value, digits = 5))
+```
+
 
 ## Plotting
 
@@ -75,8 +96,7 @@ df_model_augment %>%
 
 ```
 
-
-## Forwad, Backward, and Stepwise
+## Forward, Backward, and Stepwise
 
 ```{r}
 library(MASS)
@@ -92,3 +112,170 @@ df_model_s <- stepAIC(df_model, direction = "both", trace = FALSE)
 summary(df_model_s)
 ```
 
+## Check Model Adequacy
+
+### Training/Test Data
+
+```{r,echo=T}
+library(leaps)
+set.seed(1234)
+index <- sample(1:dim(df)[1], 1500, replace = F)
+train <- df[index, ]
+test <- df[-index, ]
+reg.fwd <- regsubsets(life_expectancy ~ ., data = train, method = "forward", nvmax = 20)
+```
+
+### Predict Function
+
+```{r, echo=T}
+# Really handy predict function
+predict_regsubsets <- function(object, newdata, id, ...) {
+ form <- as.formula(object$call [[2]])
+ mat <- model.matrix(form, newdata)
+ coefi <- coef(object, id = id)
+ xvars <- names(coefi)
+ mat[, xvars] %*% coefi
+}
+```
+
+### Run Prediction
+
+```{r, echo=T}
+testASE <- c()
+# note my index is to 20 since that what I set it in regsubsets
+for (i in 1:20) {
+ predictions <- predict_regsubsets(object = reg.fwd, newdata = test, id = i)
+ testASE[i] <- mean((test$life_expectancy - predictions)^2)
+}
+par(mfrow = c(1, 1))
+plot(1:20, testASE, type = "l", xlab = "# of predictors", ylab = "test vs train ASE", ylim = c(0.3, 0.8))
+index <- which(testASE == min(testASE))
+points(index, testASE[index], col = "red", pch = 10)
+rss <- summary(reg.fwd)$rss
+lines(1:20, rss / 100, lty = 3, col = "blue") # Dividing by 100 since ASE=RSS/sample size
+```
+
+From the test ASE graphic, we see (via the red dot) that the minimum Average Squared Error happens with 3 predictors included in the model and its value is around 0.4. The ASE on the test gives us a metric on how reproducible the models being fitted would be have on a future data set. It doesn't really help us get at how well the prediction accuracy is though. To finish things off and after additional model fitting and trial and error, once a model is deemed the final model it is usually standard practice to fit the entire data set once more and make your final reports and conclusions using all of the data (more information to estimate parameters).
+
+```{r, echo=T}
+reg.final <- regsubsets(log(AvgWinnings) ~ ., data = golf, method = "forward", nvmax = 4)
+coef(reg.final, 3)
+final.model <- lm(log(AvgWinnings) ~ Greens + AvgPutts + Save, data = golf)
+summary(final.model)
+```
+
+Remember that the output of the final model in terms of reporting p-values and interpretation, you still must check the model assumptions to make sure everything is valid. As mentioned earlier the ASE plots are really great at helping to select a final model that doesn't have too much bias or variance, it is hard to tell how well the predictions are. This depends on the scale of the response variable. A helpful graphic that SAS produces as well is the true response versus the predictions. This can give you a sense of the uncertainty in the prediction. More variability equates to more uncertainty.
+
+```{r,echo=T}
+plot(exp(final.model$fitted.values), golf$AvgWinnings, xlab = "Predicted", ylab = "AvgWinnings", xlim = c(0, 400000), ylim = c(0, 400000))
+lines(c(0, 400000), c(0, 400000), col = "red")
+```
+
+Another helpful thing that this graph shows that also would come up in the residual diagnostics is that our predictive modelis going to under predict those extreme golfers who are making more than everybody else. We would have need some other explantory variable to help capture what is going on out there.
+
+To help with the idea of this graph imagine we fit another predictive model but just used 3 of the random variables. This should clearly have less predictive ability and we could verify that with a test ASE assessment. Below is the predictions of the "bogus" model versus the true Avg Winnnings. We can see the predictions are much worse as they vary much more around the red line.
+
+```{r, echo=F}
+bogus.model <- lm(log(AvgWinnings) ~ V12 + V13 + V14, data = golf)
+plot(exp(bogus.model$fitted.values), golf$AvgWinnings, xlab = "Predicted", ylab = "AvgWinnings", xlim = c(0, 400000), ylim = c(0, 400000))
+lines(c(0, 400000), c(0, 400000), col = "red")
+```
+
+Probably the best way is to make a few predictions and examine and take a look at their prediction intervals. The tighter the interval the better model you have and you can make some practical sense from there. Another helpful thing to do would be to take a look at some prediction intervals. These are on the log scale. 
+
+```{r, echo=T}
+head(predict(final.model, golf, interval = "predict"))
+```
+
+Putting things back on the raw scale, we can see the certainty in our predictions.
+For example, the first predicted average winnings for a golfer with Green=58.2, AvgPutts=1.767, and Save=50.9 is $11994.16 with a prediction interval of 3247.77 to 44,294. The interval is quite large and illustrates just how variable average winnings are even though there are a few key predictors that are statistically relevent and the model producing results that make some sense.
+
+### Homework Question 7
+
+Use the Auto data set and perform the following tasks. Provide your R script for these answers.
+
+1. Split the data set into a training and test set that is roughly 50/50. Before doing so delete the observations that have a 3 or 5 cylinders. This will make your life easier. To keep everyone consistent with each other, make sure you set the seed number "set.seed(1234)" before making the split. 
+
+```{r echo=FALSE}
+library(dplyr)
+```
+
+```{r}
+set.seed(1234)
+
+# Create data set
+df <- Auto %>% 
+  filter(!cylinders %in% c(3, 5))
+
+# Build test and training data sets
+df_index <- sample(1:dim(df)[1], 192, replace = F)
+df_train <- df[df_index, ]
+df_test <- df[-df_index, ]
+```
+
+2. By choosing to delete the 3 and 5 cylinder cars from the model what does that change, if anything, about the conclusions one could make from an analysis conducted from this new reduced data set?
+
+**The only conclusions we could draw from the data set would relate to cars with 4, 6, or 8 cylinders since 3- and 5-cylinder cars were excluded.**
+
+3. Perform a forward selection on the training data set and produce the ASE plot comparing both the training and test set ASE metrics using the following set of predictions:  
+
+  - `displacement`
+  - `horsepower`
+  - `weight`
+  - `acceleration`
+  - `year`
+  - `origin`
+
+  Determine how many predictors should be included. Set the nvmax to 7 for this problem.
+
+```{r}
+# Run forward selection
+df_fwd <-
+  regsubsets(cylinders ~ .,
+             data = df_train,
+             method = "forward",
+             nvmax = 7)
+
+# Really handy predict function
+predict_regsubsets <- function(object, newdata, id, ...) {
+ form <- as.formula(object$call [[2]])
+ mat <- model.matrix(form, newdata)
+ coefi <- coef(object, id = id)
+ xvars <- names(coefi)
+ mat[, xvars] %*% coefi
+}
+
+# Create empty test ASE
+testASE <- c()
+
+# For loop
+for (i in 1:7) {
+  predictions <-
+    predict.regsubsets(object = df_fwd,
+                       newdata = df_test,
+                       id = i)
+  testASE[i] <- mean((as.numeric(df_test$cylinders) - predictions) ^ 2)
+}
+
+par(mfrow = c(1, 1))
+plot(
+  1:7,
+  testASE,
+  type = "l",
+  xlab = "# of predictors",
+  ylab = "test vs train ASE",
+)
+index <- which(testASE == min(testASE))
+points(index, testASE[index], col = "red", pch = 10)
+rss <- summary(df_fwd)$rss
+lines(1:7, rss / 192, lty = 3, col = "blue")
+```
+
+4. Using your decision from #3, fit a final model using the entire data set and produce the residual diagnostics. Does your model look reasonable or do you think you should consider some additional iterations? Give a brief comment. You do not need to act on the comments.
+
+```{r}
+reg_final <- regsubsets(cylinders ~ ., data = df, method = "forward", nvmax = 7)
+coef(reg_final, 6)
+final_model <- lm(cylinders ~ mpg + displacement + horsepower + weight + year + origin, data = df)
+summary(final.model)
+```
