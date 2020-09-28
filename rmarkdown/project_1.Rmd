@@ -17,9 +17,11 @@ library(leaps)
 
 ## Introduction
 
+Using the World Health Organization (WHO) data compiled by Kumar Rajarshi, Deeksha Russell, and Duan Wang, we attempted to predict which factors affect life expectancy.
+
 ## Data Description
 
-Description and context of the Life Expectancy (WHO) dataset can be found [here](https://www.kaggle.com/kumarajarshi/life-expectancy-who).
+Description and context of the Life Expectancy (WHO) dataset can be found [here](https://www.kaggle.com/kumarajarshi/life-expectancy-who). Data has been compiled from several different data sets into a final data set that represents health factors for 193 countries between the years of 2000-2015.
 
 ```{r load-data, echo=FALSE, message=FALSE}
 # Load data
@@ -31,6 +33,8 @@ df_clean <- janitor::clean_names(df)
 # Look at the data
 glimpse(df_clean)
 ```
+
+Looking at the data, there are 2,938 observatrions and 22 variables that cover various social, economic, and health-related factors. 
 
 ## Exploratory Data Analysis
 
