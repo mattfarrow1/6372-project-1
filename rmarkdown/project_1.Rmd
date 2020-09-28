@@ -21,7 +21,7 @@ library(leaps)
 
 Description and context of the Life Expectancy (WHO) dataset can be found [here](https://www.kaggle.com/kumarajarshi/life-expectancy-who).
 
-```{r load-data}
+```{r load-data, echo=FALSE, message=FALSE}
 # Load data
 df <- read_csv(here::here("data - raw", "Life Expectancy Data.csv"))
 
@@ -34,9 +34,9 @@ glimpse(df_clean)
 
 ## Exploratory Data Analysis
 
-### Examing the Data
+We'll start by taking a closer look at life expectancy. 
 
-```{r echo=FALSE}
+```{r echo=FALSE, message=FALSE}
 df_clean %>% 
   ggplot(aes(life_expectancy)) +
   geom_histogram(fill = "steelblue", color = "black") +
@@ -55,17 +55,15 @@ df_clean %>%
   theme_ipsum()
 ```
 
-### Convert to Factors
-
-Before we get started, we'll convert the qualitative variables `country` and `status` to factors. 
-```{r convert-to-factor}
+```{r convert-to-factor, echo=FALSE}
+# Convert country and status to factors
 df_clean$country <- as_factor(df_clean$country)
 df_clean$status  <- as_factor(df_clean$status)
 ```
 
 ### Check for Correlation
 
-```{r message=FALSE, warning=FALSE}
+```{r message=FALSE, warning=FALSE, echo=FALSE}
 ggcorr(
   df_clean,
   label = TRUE,
@@ -79,7 +77,7 @@ ggcorr(
 
 We examined various correlation matrices to determine whether there were variable(s) that should be addressed. We'll start by removing redundant variables and picking ones with fewer `NA` values.
 
-```{r}
+```{r message=FALSE, warning=FALSE, echo=FALSE}
 df_clean %>% 
   select(-c(under_five_deaths, gdp, thinness_1_19_years)) %>% 
   ggcorr(
@@ -94,7 +92,7 @@ df_clean %>%
 
 Let's now look at what happens when we also remove `population`, since it has minimal correlation to `life_expectancy`.
 
-```{r}
+```{r message=FALSE, warning=FALSE, echo=FALSE}
 df_clean %>% 
   select(-c(under_five_deaths, gdp, thinness_1_19_years, population)) %>% 
   ggcorr(
@@ -109,19 +107,25 @@ df_clean %>%
 
 We'll proceed, dropping the columns we've looked at.
 
-```{r}
+```{r echo=FALSE}
 df_clean <- df_clean %>% 
   select(-c(under_five_deaths, gdp, thinness_1_19_years, population))
 ```
 
 ### Deal with Missing Values
 
-```{r}
+Check for missing values.
+
+```{r echo=FALSE}
 # Check for missing values
 tibble(variable = names(colSums(is.na(df_clean))),
        missing = colSums(is.na(df_clean))) %>% 
   gt()
+```
 
+Drop all rows where life expectancy is `NA`
+
+```{r}
 # Drop all rows where life expectancy is NA
 df_clean <- df_clean %>% 
   filter(!is.na(life_expectancy))
@@ -130,7 +134,11 @@ df_clean <- df_clean %>%
 tibble(variable = names(colSums(is.na(df_clean))),
        missing = colSums(is.na(df_clean))) %>% 
   gt()
+```
 
+Drop remaining rows with NA's for the interpretable model
+
+```{r}
 # Drop remaining rows with NA's for the interpretable model
 # Remove all rows with an NA
 df_interp <- na.omit(df_clean)
@@ -145,7 +153,7 @@ tibble(variable = names(colSums(is.na(df_interp))),
 
 Now that we've subsetted our variables and dealt with `NA`'s, let's look at how many records we now have by year.
 
-```{r}
+```{r echo=FALSE}
 df_interp %>% count(year)
 ```
 
@@ -159,7 +167,7 @@ df_interp <- df_interp %>% filter(year %in% 2011:2014)
 
 Now that we've finished our feature engineering, let's start building our interpretable model. 
 
-```{r}
+```{r echo=FALSE}
 # Set the maximum number of variables to consider in the model. Although the
 # model can handle up to 20, the more we add, the less interpretable the final
 # model will be.
@@ -174,14 +182,19 @@ regfit_full <-
 
 # Examine the regression summary
 reg_summary <- summary(regfit_full)
+```
 
+```{r}
 # Look at the names of reg_summary
 names(reg_summary)
 
 # What are the R-squared values?
 reg_summary$rsq
+```
 
-# Plot RSS, adjusted $R^2$ $C_p$ and BIC for all models
+### Plot the RSS, adjusted $R^2$, $C_p$, and BIC for all Models
+
+```{r echo=FALSE}
 par(mfrow = c(2, 2))
 plot(reg_summary$rss,
      xlab = "Number of Variables",
@@ -221,24 +234,26 @@ points(
   cex = 2,
   pch = 20
 )
+```
 
-# Display the selected variables for the best model with a given number of
-# predictors
+Now we'll look at the selected variables for the best model with a given number of predictors.
+
+```{r echo=FALSE}
 plot(regfit_full, scale = "r2")
 plot(regfit_full, scale = "adjr2")
 plot(regfit_full, scale = "Cp")
 plot(regfit_full, scale = "bic")
 ```
 
-The model with the lowest BIC is the five-variable model that contains `adult_mortality`, `percentage_expenditure`, `total_expenditure`, `hiv_aids`, and `income_composition_of_resources`. We can use the coef() function to see the coefficient estimates associated with this model.
+The model with the lowest BIC is the five-variable model that contains `adult_mortality`, `percentage_expenditure`, `total_expenditure`, `hiv_aids`, and `income_composition_of_resources`. We can use the `coef()` function to see the coefficient estimates associated with this model.
 
-```{r}
+```{r echo=FALSE}
 coef(regfit_full, 5)
 ```
 
 ### Run Forward and Backward Stepwise Selection
 
-```{r}
+```{r echo=FALSE}
 # Forward
 regfit_fwd <-
   regsubsets(life_expectancy ~ ., data = df_interp[, -1], method = "forward")
@@ -259,7 +274,7 @@ tibble(variables = names(coef(regfit_full, 5)),
 
 ### Choose Using Validation Set
 
-```{r warning=FALSE}
+```{r warning=FALSE, echo=FALSE}
 # Set seed
 set.seed(1)
 
@@ -279,11 +294,15 @@ for (i in 1:8) {
   pred <- test_mat[, names(coefi)] %*% coefi
   val_errors[i] <- mean((df_interp$life_expectancy[test] - pred)^2)
 }
+```
 
+```{r}
 # Find the best model
 val_errors
 coef(regfit_best, which.min(val_errors))
+```
 
+```{r echo=FALSE}
 # Write a prediction fuction
 predict_regsubsets <- function(object, newdata, id, ...) {
   form <- as.formula(object$call[[2]])
@@ -300,7 +319,7 @@ coef(regfit_best, which.min(val_errors))
 
 ### Choose Using Cross-Validation
 
-```{r}
+```{r echo=FALSE}
 k <- 10
 set.seed(1)
 folds <- sample(1:k, nrow(df_interp), replace = TRUE)
@@ -340,7 +359,7 @@ coef(reg_best, 4)  # the number sets the number of variables we want
 
 ### Build the Final Model
 
-```{r}
+```{r echo=FALSE}
 # Build the final model using the best subset selection results
 final_model <-
   lm(
@@ -357,7 +376,7 @@ summary(final_model)
 
 ### Check Diagnostics
 
-```{r}
+```{r echo=FALSE}
 par(mfrow = c(1, 1))
 plot(
   final_model$fitted.values,
@@ -373,7 +392,7 @@ plot(final_model)
 
 ### Fit our Model to our Data Set
 
-```{r}
+```{r echo=FALSE}
 par(mfrow = c(1, 2))
 test.model <- lm(life_expectancy ~ ., df_interp[, -1])
 plot(test.model$fitted.values,
@@ -386,6 +405,11 @@ plot(df_interp$life_expectancy,
      ylab = "Residuals")
 ```
 
+## KNN Model
+
+```{r}
+
+```
 
 
 
@@ -429,5 +453,9 @@ Final conclusions from the analyses of Objective 1’s interpretable model and i
 
 ## Appendix 
 
-- Well-commented SAS/R Code
-- Graphics and summary tables (Can be placed in the appendix or in the written report itself.)
+### Figures
+
+### R Code
+```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+
+```
