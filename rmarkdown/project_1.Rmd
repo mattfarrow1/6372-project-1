@@ -7,15 +7,12 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
-library(reshape2)
 library(corrplot)
 library(GGally)
 library(gt)
 library(hrbrthemes)
 library(car)
 library(leaps)
-# library(knitr)
-# library(scales)
 ```
 
 ## Introduction
@@ -194,9 +191,10 @@ plot(reg_summary$adjr2,
      xlab = "Number of Variables",
      ylab = "Adjusted RSq",
      type = "l")
+which.max(reg_summary$adjr2)
 points(
-  consider,
-  reg_summary$adjr2[which.max(reg_summary$adjr2)],
+  11,
+  reg_summary$adjr2[11],
   col = "red",
   cex = 2,
   pch = 20
@@ -206,7 +204,7 @@ plot(reg_summary$cp,
      ylab = "Cp",
      type = "l")
 points(
-  consider,
+  10,
   reg_summary$cp[which.min(reg_summary$cp)],
   col = "red",
   cex = 2,
@@ -217,7 +215,7 @@ plot(reg_summary$bic,
      ylab = "BIC",
      type = "l")
 points(
-  consider,
+  5,
   reg_summary$bic[which.min(reg_summary$bic)],
   col = "red",
   cex = 2,
@@ -259,9 +257,9 @@ tibble(variables = names(coef(regfit_full, 5)),
   gt()
 ```
 
-### Choose Using Validation Set and Cross Validation
+### Choose Using Validation Set
 
-```{r}
+```{r warning=FALSE}
 # Set seed
 set.seed(1)
 
@@ -276,7 +274,7 @@ test_mat <- model.matrix(life_expectancy ~ ., data = df_interp[test, -1])
 # for the best model of that size, multiply them into the appropriate columns of
 # the test model matric to form the predictions, and compute the test MSE.
 val_errors <- rep(NA, consider)
-for (i in 1:consider) {
+for (i in 1:8) {
   coefi <- coef(regfit_best, id = i)
   pred <- test_mat[, names(coefi)] %*% coefi
   val_errors[i] <- mean((df_interp$life_expectancy[test] - pred)^2)
@@ -298,14 +296,17 @@ predict_regsubsets <- function(object, newdata, id, ...) {
 # Perform best subset selection on the full data set, and select the best model.
 regfit_best <- regsubsets(life_expectancy ~ ., data = df_interp[,-1])
 coef(regfit_best, which.min(val_errors))
+```
 
-# Use cross-validation to choose among models
+### Choose Using Cross-Validation
+
+```{r}
 k <- 10
 set.seed(1)
 folds <- sample(1:k, nrow(df_interp), replace = TRUE)
 cv_errors <- matrix(NA, k, consider, dimnames = list(NULL, paste(1:consider)))
 
-predict_regsubsets <- function(object, newdata, id, ...) {
+predict.regsubsets <- function(object, newdata, id, ...) {
   form <- as.formula(object$call[[2]])
   mat <- model.matrix(form, newdata)
   coefi <- coef(object, id = id)
@@ -335,7 +336,11 @@ plot(mean_cv_errors, type = "b")
 # variables for the final model
 reg_best <- regsubsets(life_expectancy ~ ., data = df_interp[, -1])
 coef(reg_best, 4)  # the number sets the number of variables we want
+```
 
+### Build the Final Model
+
+```{r}
 # Build the final model using the best subset selection results
 final_model <-
   lm(
@@ -348,8 +353,11 @@ final_model <-
 
 # Final model summary
 summary(final_model)
+```
 
-#check diagnostics
+### Check Diagnostics
+
+```{r}
 par(mfrow = c(1, 1))
 plot(
   final_model$fitted.values,
@@ -361,12 +369,11 @@ lines(c(0, 90), c(0, 90), col = "red")
 
 par(mfrow=c(2,2))
 plot(final_model)
+```
 
-######################################################
-###Now let's proceed with just the best model overall###
-#########################################################
+### Fit our Model to our Data Set
 
-# Fit a model on our df_interp data set
+```{r}
 par(mfrow = c(1, 2))
 test.model <- lm(life_expectancy ~ ., df_interp[, -1])
 plot(test.model$fitted.values,
@@ -377,10 +384,6 @@ plot(df_interp$life_expectancy,
      test.model$residuals,
      xlab = "Life Expectancy",
      ylab = "Residuals")
-
-
-###How do you do lasso etc and CV?????????
-
 ```
 
 
