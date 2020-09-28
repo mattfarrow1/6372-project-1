@@ -405,6 +405,8 @@ plot(df_interp$life_expectancy,
      ylab = "Residuals")
 ```
 
+$Life~Expectancy = 47.106 - 0.013(Adult~Mortality) + 0.289(Total~Expenditure) - 0.911(HIV/AIDS) + 36.649(Income~Composition~of~Resources)$
+
 ## KNN Model
 
 ```{r}
