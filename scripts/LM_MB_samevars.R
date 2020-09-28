@@ -308,3 +308,4 @@ lines(1:16,rss/518,lty=3,col="blue")  #Dividing by n since ASE=RSS/sample size
 
 #ASE for both seems to be around 15 at lowest... worse than our other model... 
 
+###How do you do lasso etc and CV?????????
