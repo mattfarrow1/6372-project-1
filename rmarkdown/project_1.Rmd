@@ -13,6 +13,7 @@ library(gt)
 library(hrbrthemes)
 library(car)
 library(leaps)
+library(caret)
 ```
 
 ## Introduction
@@ -414,7 +415,27 @@ $Life~Expectancy = 47.106 - 0.013(Adult~Mortality) + 0.289(Total~Expenditure) - 
 ## KNN Model
 
 ```{r}
+# Set seed
+set.seed(123)
 
+# Standardize the data to prep for KNN first - everything except life expectancy
+preProcValues <- preProcess(df_interp[,-4], method = c("scale"))
+df_knn <- predict(preProcValues, df_interp)
+
+# Split training/test data sets
+inTraining <- createDataPartition(df_knn$life_expectancy, p = 0.75, list = FALSE)
+knn_train  <- df_knn[inTraining,]
+knn_test   <- df_knn[-inTraining,]
+
+# Split the non-standardized data for trees
+
+# Set seed
+set.seed(123)
+
+# Split training/test data sets
+inTraining <- createDataPartition(df_interp$life_expectancy, p = 0.75, list = FALSE)
+tree_train  <- df_interp[inTraining,]
+tree_test   <- df_interp[-inTraining,]
 ```
 
 
