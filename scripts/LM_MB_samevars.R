@@ -126,15 +126,6 @@ coef(regfit_bwd, consider)
 
 # Choosing Among Models ---------------------------------------------------
 
-library(caret)
-# Build test and training data sets - I updated this because I was getting errors on the predict loop
-set.seed(1)
-# create the training partition that is 75% of total obs
-inTraining <- createDataPartition(life_y$life_expectancy, p=0.75, list=FALSE)
-# create training/testing dataset
-train <- life_y[inTraining,]   
-test <- life_y[-inTraining,] 
-
 #I couldn't get this to work as I wanted, and was not sure of the intent so I skipped this and went with
 #the model with the four predictors above#
 #-------------#
@@ -254,4 +245,66 @@ hist(life_y$log_le)
 ###Now let's proceed with just the best model overall###
 #########################################################
 
+#fit a model on our life_1 data set (already down to 18 vars instead of 22)
+par(mfrow=c(1,2))
+test.model<-lm(life_expectancy ~., life_1[,-1])
+plot(test.model$fitted.values,test.model$residuals,xlab="Fitted Values",ylab="Residuals")
+plot(life_1$life_expectancy,test.model$residuals,xlab="Life Expectancy",ylab="Residuals")
+
+#make test/train splits
+library(caret)
+# Build test and training data sets - I updated this because I was getting errors on the predict loop
+set.seed(1)
+# create the training partition that is 75% of total obs
+inTraining <- createDataPartition(life_1$life_expectancy, p=0.75, list=FALSE)
+# create training/testing dataset
+train <- life_1[inTraining,]   
+test <- life_1[-inTraining,] 
+
+#try forward selection but with no limit on predictors and all years now
+
+# Forward
+regfit_fwd_2 <- regsubsets(life_expectancy ~ ., data = train[,-1], method = "forward", nvmax = 16)
+
+summary(regfit_fwd_2)$adjr2
+summary(regfit_fwd_2)$rss
+summary(regfit_fwd_2)$bic
+
+predict.regsubsets =function (object , newdata ,id ,...){
+  form=as.formula (object$call [[2]])
+  mat=model.matrix(form ,newdata )
+  coefi=coef(object ,id=id)
+  xvars=names(coefi)
+  mat[,xvars]%*%coefi
+}
+
+testASE<-c()
+for (i in 1:16){
+  predictions<-predict.regsubsets(object=regfit_fwd_2,newdata=test,id=i) 
+  testASE[i]<-mean((test$life_expectancy-predictions)^2)
+}
+par(mfrow=c(1,1))
+plot(1:16,testASE,type="l",xlab="# of predictors",ylab="test vs train ASE")
+index<-which(testASE==min(testASE))
+points(index,testASE[index],col="red",pch=10)
+rss<-summary(regfit_fwd_2)$rss
+lines(1:16,rss/518,lty=3,col="blue")  #Dividing by n since ASE=RSS/sample size
+
+# Backward
+regfit_bwd_2 <- regsubsets(life_expectancy ~ ., data = life_1[,-1], method = "backward", nvmax = 16)
+summary(regfit_bwd_2)
+
+testASE_b<-c()
+for (i in 1:16){
+  predictions<-predict.regsubsets(object=regfit_bwd_2,newdata=test,id=i) 
+  testASE[i]<-mean((test$life_expectancy-predictions)^2)
+}
+par(mfrow=c(1,1))
+plot(1:16,testASE,type="l",xlab="# of predictors",ylab="test vs train ASE")
+index<-which(testASE==min(testASE))
+points(index,testASE[index],col="red",pch=10)
+rss<-summary(regfit_bwd_2)$rss
+lines(1:16,rss/518,lty=3,col="blue")  #Dividing by n since ASE=RSS/sample size
+
+#ASE for both seems to be around 15 at lowest... worse than our other model... 
 
