@@ -15,6 +15,13 @@ df <- read_csv(here::here("data - raw", "Life Expectancy Data.csv"))
 # Clean up column names
 df_clean <- janitor::clean_names(df)
 
+# Several different ways of getting a high-level look at the data
+# summary(df)
+glimpse(df)
+# Hmisc::describe(df$population)
+# psych::describe(df)
+# skimr::skim(df)
+
 # Data Cleanup ------------------------------------------------------------
 
 # Convert country and status to factors
