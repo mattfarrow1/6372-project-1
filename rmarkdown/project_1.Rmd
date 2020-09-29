@@ -169,12 +169,10 @@ df_clean %>% ggplot(aes(x = hepatitis_b, y = life_expectancy)) +
   geom_smooth()
 ```
 
-Our options are to either drop all of the NA's, impute the values, or fill with 0's. For our interpretable model, let's drop the NA's and we will revisit them for our predictive model.
-
+Our options are to either drop all of the `NA`'s, impute the values, or fill with `0`'s. For our interpretable model, let's drop the `NA`'s and we will revisit them for our predictive model.
 
 ```{r}
 # Drop remaining rows with NA's for the interpretable model
-# Remove all rows with an NA
 df_interp <- na.omit(df_clean)
 
 # Final check of missing values
@@ -214,7 +212,7 @@ regfit_full <-
              df_interp[, -1],
              nvmax = consider)
 
-# Examine the regression summary
+# Store the regression summary
 reg_summary <- summary(regfit_full)
 ```
 
@@ -468,9 +466,10 @@ $Life~Expectancy = 47.106 - 0.013(Adult~Mortality) + 0.289(Total~Expenditure) - 
 
 ## Linear Prediction Model
 
-Let's start again with the df_clean dataset to perform feature engineering. We have already removed at this point variables that are highly correlated and rows/countries with NA for life expectancy. This leaves us with 17 other potential predictors and still quite a few NA values. We know we cannot have NA values to perform Ridge Regression or LASSO so need to either remove them, impute them, or change them to 0.
+Let's start again with the `df_clean` data set to perform feature engineering. We have already removed at this point variables that are highly correlated and rows/countries with `NA` for life expectancy. This leaves us with 17 other potential predictors and still quite a few `NA` values. We know we cannot have `NA` values to perform Ridge Regression or LASSO so need to either remove them, impute them, or change them to 0.
 
-# Deal with missing values
+### Deal with missing values
+
 ```{r}
 # Check for missing values
 tibble(variable = names(colSums(is.na(df_clean))),
@@ -478,37 +477,63 @@ tibble(variable = names(colSums(is.na(df_clean))),
   gt()
 ```
 
-Let's start by checking the relationships of each variable with > 100 NA's to see if they appear significant.
+Let's start by checking the relationships of each variable with > 100 `NA`'s to see if they appear significant.
 
-```{r}
+```{r echo=FALSE}
 #Visualize the relationship to see if it looks significant (plot again)
-#hepatitis b
+
+# hepatitis b
 df_clean %>% ggplot(aes(x = hepatitis_b, y = life_expectancy)) +
-  geom_point() +
-  geom_smooth()
+  # geom_point() +
+  geom_jitter(alpha = 0.3) +
+  geom_smooth() +
+  labs(title = "Relationship of Hepatitis B and Life Expectancy",
+       x = "Hepatitis B",
+       y = "Life Expectancy") +
+  theme_ipsum()
 
-#total expenditure
+# total expenditure
 df_clean %>% ggplot(aes(x = total_expenditure, y = life_expectancy)) +
-  geom_point() +
-  geom_smooth()
+  # geom_point() +
+  geom_jitter(alpha = 0.3) +
+  geom_smooth() +
+  labs(title = "Relationship of Total Expenditure and Life Expectancy",
+       x = "Total Expenditure",
+       y = "Life Expectancy") +
+  theme_ipsum()
 
-#alcohol
+# alcohol
 df_clean %>% ggplot(aes(x = alcohol, y = life_expectancy)) +
-  geom_point() +
-  geom_smooth()
+  # geom_point() +
+  geom_jitter(alpha = 0.3) +
+  geom_smooth() +
+  labs(title = "Relationship of Alcohol and Life Expectancy",
+       x = "Alcohol",
+       y = "Life Expectancy") +
+  theme_ipsum()
 
-#income comp of res
+# income composition of resources
 df_clean %>% ggplot(aes(x = income_composition_of_resources, y = life_expectancy)) +
-  geom_point() +
-  geom_smooth()
+  # geom_point() +
+  geom_jitter(alpha = 0.3) +
+  geom_smooth() +
+  labs(title = "Relationship of Income Composition of Resources\nand Life Expectancy",
+       x = "Income Composition of Resources",
+       y = "Life Expectancy") +
+  theme_ipsum()
 
-#schooling
+# schooling
 df_clean %>% ggplot(aes(x = schooling, y = life_expectancy)) +
-  geom_point() +
-  geom_smooth()
-
+  # geom_point() +
+  geom_jitter(alpha = 0.3) +
+  geom_smooth() +
+  labs(title = "Relationship of Schooling and Life Expectancy",
+       x = "Schooling",
+       y = "Life Expectancy") +
+  theme_ipsum()
 ```
-The trend looks pretty flat for hepatitis_b, total_expenditure, and alcohol so I think it is safe for us to go ahead and remove these columns. However there appears to be some relationship for schooling and possibly for income composition of resources as well, so instead of imputing these values let's go ahead and remove the NA's for these two variables.
+
+The trend looks pretty flat for `hepatitis_b`, `total_expenditure`, and `alcohol` so I think it is safe for us to go ahead and remove these columns. However, there appears to be some relationship for `schooling` and possibly for `income composition of resources` as well, so instead of imputing these values let's go ahead and remove the `NA`'s for these two variables.
 
 ```{r}
 #remove hepatitis b and total_expenditure
@@ -522,12 +547,11 @@ df_predict <- na.omit(df_predict)
 tibble(variable = names(colSums(is.na(df_predict))),
        missing = colSums(is.na(df_predict))) %>% 
   gt()
-
 ```
 
 We now have 2,728 observations and 15 variables. Let's proceed to variable selection.
 
-##LASSO
+## LASSO
 
 ####UPDATE HERE! ###
 
