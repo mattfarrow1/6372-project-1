@@ -14,6 +14,8 @@ library(hrbrthemes)
 library(car)
 library(leaps)
 library(caret)
+library(tree)
+library(randomForest)
 ```
 
 ## Introduction
@@ -386,11 +388,18 @@ summary(final_model)
 # WORK ON ASE
 testASE_b <- c()
 for (i in 1:16) {
-  predictions <- predict.regsubsets(object = regfit_bwd_2, newdata = test, id = i)
-  testASE[i] <- mean((test$life_expectancy - predictions)^2)
+  predictions <-
+    predict.regsubsets(object = regfit_bwd_2,
+                       newdata = test,
+                       id = i)
+  testASE[i] <- mean((test$life_expectancy - predictions) ^ 2)
 }
 par(mfrow = c(1, 1))
-plot(1:16, testASE, type = "l", xlab = "# of predictors", ylab = "test vs train ASE")
+plot(1:16,
+     testASE,
+     type = "l",
+     xlab = "# of predictors",
+     ylab = "test vs train ASE")
 index <- which(testASE == min(testASE))
 points(index, testASE[index], col = "red", pch = 10)
 rss <- summary(regfit_bwd_2)$rss
@@ -433,28 +442,25 @@ $Life~Expectancy = 47.106 - 0.013(Adult~Mortality) + 0.289(Total~Expenditure) - 
 ## KNN Model
 
 ```{r}
-# Impute the data set
-# my very inefficient way to accomplish this :)
+# Copy the data
 df_knn <- df_clean
 
-# df_knn <- df_knn %>% 
-#   mutate(hepatitis_b = replace_na(hepatitis_b, median(df_knn$hepatitis_b)),
-#          polio = replace_na(polio, median(df_knn$polio)),
-#          total_expenditure = replace_na(total_expenditure, median(df_knn$total_expenditure)))
+# Impute the data set
+df_knn <- df_knn %>%
+  mutate(across(
+    c(hepatitis_b, polio, total_expenditure, diphtheria),
+    ~ replace_na(., median(.x, na.rm = TRUE))
+  )) %>% 
+  mutate(across(
+    c(bmi, income_composition_of_resources, schooling),
+    ~ replace_na(., mean(.x, na.rm = TRUE))
+  )) %>% 
+  mutate(across(
+    c(alcohol, thinness_5_9_years),
+    ~ replace_na(., 0)
+  ))
 
-df_knn$hepatitis_b[is.na(df_knn$hepatitis_b)] <- median(df_knn$hepatitis_b,na.rm = TRUE)
-df_knn$polio[is.na(df_knn$polio)] <- median(df_knn$polio,na.rm = TRUE)
-df_knn$total_expenditure[is.na(df_knn$total_expenditure)] <- median(df_knn$total_expenditure,na.rm = TRUE)
-df_knn$diphtheria[is.na(df_knn$diphtheria)] <- median(df_knn$diphtheria,na.rm = TRUE)
-df_knn$bmi[is.na(df_knn$bmi)] <- mean(df_knn$bmi,na.rm = TRUE)
-df_knn$alcohol[is.na(df_knn$alcohol)] <- 0
-df_knn$thinness_5_9_years[is.na(df_knn$thinness_5_9_years)] <- 0
-
-df_knn <- df_knn %>% 
-  mutate(income_composition_of_resources = replace_na(income_composition_of_resources, mean(income_composition_of_resources, na.rm = TRUE)),
-         schooling = replace_na(schooling, mean(schooling, na.rm = TRUE)))
-
-#check new histograms to see if any shifts
+# Check the histograms to see if there any shifts after imputing
 for (col in 4:ncol(df_knn)) {
     hist(df_knn[,col], main=names(df_knn[col]))
 }
@@ -463,16 +469,21 @@ for (col in 4:ncol(df_knn)) {
 set.seed(123)
 
 # Standardize the data to prep for KNN first - everything except life expectancy
-preProcValues <- preProcess(df_knn[,-4], method = c("scale"))
+preProcValues <- preProcess(df_knn[, -4], method = c("scale"))
 df_knn_standard <- predict(preProcValues, df_knn)
 
 # Split training/test data sets
-inTraining <- createDataPartition(df_knn_standard$life_expectancy, p = 0.75, list = FALSE)
-knn_train  <- df_knn_standard[inTraining,]
-knn_test   <- df_knn_standard[-inTraining,]
+inTraining <-
+  createDataPartition(df_knn_standard$life_expectancy,
+                      p = 0.75,
+                      list = FALSE)
+knn_train  <- df_knn_standard[inTraining, ]
+knn_test   <- df_knn_standard[-inTraining, ]
+```
 
-# Split the non-standardized data for trees
+Split the non-standardized data for trees
 
+```{r}
 # Set seed
 set.seed(123)
 
@@ -485,9 +496,15 @@ tree_test   <- df_knn[-inTraining,]
 set.seed(567)
 
 # Set train control: 5 repeat, 10-fold CV
-ctrl <- trainControl(method="repeatedcv", number = 10, repeats = 5, returnResamp = "all") 
+ctrl <-
+  trainControl(
+    method = "repeatedcv",
+    number = 10,
+    repeats = 5,
+    returnResamp = "all"
+  ) 
 
-# Run everthing with train control above
+# Run everything with the train control above
 knnFit <-
   train(
     life_expectancy ~ .,
@@ -498,17 +515,21 @@ knnFit <-
   )
 knnFit
 
-#check metrics on test set
-Predictions_knn5 <- predict(knnFit,newdata=knn_test)
-#performance measurement
-postResample(knn_test$life_expectancy,Predictions_knn5)
+# Check the metrics on the test set
+Predictions_knn5 <- predict(knnFit, newdata = knn_test)
 
+# Performance measurement
+postResample(knn_test$life_expectancy, Predictions_knn5)
+
+# Set parameters for trellis displays
 trellis.par.set(caretTheme())
-plot(knnFit)  
-plot(knnFit, metric = "Rsquared")
-plot(knnFit, metric = "MAE")
 
-#try knn with k less than 5
+# Plotting
+plot(knnFit, main = "knnFit Results")  
+plot(knnFit, metric = "Rsquared", main = "knnFit Results (R-Squared)")
+plot(knnFit, metric = "MAE", main = "knnFit Results (MAE)")
+
+# Try another knn with a k value of less than 5
 knnFit2 <-
   train(
     life_expectancy ~ .,
@@ -519,60 +540,61 @@ knnFit2 <-
   )
 knnFit2
 
-#check metrics on test set
-Predictions_knn3 <- predict(knnFit2,newdata=knn_test)
-#performance measurement
-postResample(knn_test$life_expectancy,Predictions_knn3)
+# Check the metrics on the test set
+Predictions_knn3 <- predict(knnFit2, newdata = knn_test)
 
+# Performance measurement
+postResample(knn_test$life_expectancy, Predictions_knn3)
+
+# Set parameters for trellis displays
 trellis.par.set(caretTheme())
-plot(knnFit2)  
-plot(knnFit2, metric = "Rsquared")
-plot(knnFit2, metric = "MAE")
+
+# Plotting
+plot(knnFit2, main = "knnFit2 Results")  
+plot(knnFit2, metric = "Rsquared", main = "knnFit2 Results (R-Squared)")
+plot(knnFit2, metric = "MAE", main = "knnFit2 Results (MAE)")
 ```
 
 ## Trees
 
 ```{r}
-#install.packages("tree")
-library(tree)
-#have to remove country because this tree function has max 32 levels
-tree1 <- tree(life_expectancy ~., data = trainSet2[,-1])
+# Remove country because this tree function has a maximum of 32 levels
+tree1 <- tree(life_expectancy ~ ., data = df_knn[, -1])
 summary(tree1)
 plot(tree1)
 
-#check tree performance
-
+# Check tree performance
 cv.tree1 <- cv.tree(tree1)
-plot(cv.tree1$size,cv.tree1$dev,type='b')
+plot(cv.tree1$size, cv.tree1$dev, type = 'b')
 
-#check predictions
-yhat = predict(tree1,newdata=testSet2[,-1])
-plot(yhat,testSet2$life_expectancy)
-abline(0,1)
-mean((yhat - testSet2$life_expectancy)^2)
+# Check the predictions
+yhat = predict(tree1, newdata = df_knn[, -1])
+plot(yhat, df_knn$life_expectancy)
+abline(0, 1)
+mean((yhat - df_knn$life_expectancy) ^ 2)
 
-#try random forest compared to single tree model
-#install.packages("randomForest")
-library(randomForest)
+# Try a random forest compared to a single tree model
 set.seed(1)
-#have to remove country again
-rfFit <- randomForest(life_expectancy ~., data = trainSet2[,-1])
+
+# Remove country again
+rfFit <- randomForest(life_expectancy ~ ., data = df_knn[, -1])
 rfFit
 
-#testing using all predictors for each tree
+# Test using all predictors for each tree
 set.seed(1)
-#have to remove country again
-rfFit2 <- randomForest(life_expectancy ~., data = trainSet2[,-1], mtry = 17)
+
+# Have to remove country again
+rfFit2 <- randomForest(life_expectancy ~., data = df_knn[,-1], mtry = 17)
 rfFit2
 
 #compare y-hat for the two random forest models
-yhat.rf <- predict(rfFit, newdata=testSet[,-1])
-yhat.rf2 <- predict(rfFit2, newdata=testSet[,-1])
+yhat.rf <- predict(rfFit, newdata = df_knn[, -1])
+yhat.rf2 <- predict(rfFit2, newdata = df_knn[, -1])
 
-plot(yhat.rf,testSet2$life_expectancy)
+plot(yhat.rf, df_knn$life_expectancy)
 abline(0,1)
 
-plot(yhat.rf2,testSet2$life_expectancy)
+plot(yhat.rf2,df_knn$life_expectancy)
 abline(0,1)
 ```
 
