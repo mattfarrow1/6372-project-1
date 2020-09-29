@@ -150,28 +150,34 @@ We have now excluded these countries from our scope: Cook Islands, Dominica, Mar
 
 Investigating the remaining `NA`'s - Hepatitis B is now our variable with the most `NA`'s at 553. Let's see if there is either a year or a country that has the majority of the `NA`'s.
 
-```{r}
+```{r echo=FALSE, warning=FALSE}
 # Look at how many missing hepatitis measurements there are by country
 df_clean %>% 
   group_by(country) %>% 
   count(missing = is.na(hepatitis_b)) %>% 
   filter(missing == TRUE) %>% 
   select(-missing) %>% 
-  rename(missing = n)
+  rename(missing = n) %>% 
+  arrange(desc(missing))
 
 # #Matt - how can I group by/summarize to just a two column table with country in one column and NA count in the other?
 # df_clean$country[which(is.na(df_clean$hepatitis_b))]
 # df_clean$year[which(is.na(df_clean$hepatitis_b))]
 
 #Visualize the relationship to see if it looks significant
-df_clean %>% ggplot(aes(x = hepatitis_b, y = life_expectancy)) +
-  geom_point() +
-  geom_smooth()
+df_clean %>% 
+  ggplot(aes(x = hepatitis_b, y = life_expectancy)) +
+  # geom_point() +
+  geom_jitter(alpha = 0.3) +
+  geom_smooth() +
+  labs(title = "Hepatitis B vs. Life Expectancy",
+       x = "Hepatitis B",
+       y = "Life Expectancy")
 ```
 
 Our options are to either drop all of the `NA`'s, impute the values, or fill with `0`'s. For our interpretable model, let's drop the `NA`'s and we will revisit them for our predictive model.
 
-```{r}
+```{r echo=FALSE}
 # Drop remaining rows with NA's for the interpretable model
 df_interp <- na.omit(df_clean)
 
@@ -289,12 +295,12 @@ coef(regfit_full, 5)
 # Forward
 regfit_fwd <-
   regsubsets(life_expectancy ~ ., data = df_interp[, -1], method = "forward")
-summary(regfit_fwd)
+# summary(regfit_fwd)
 
 # Backward
 regfit_bwd <-
   regsubsets(life_expectancy ~ ., data = df_interp[, -1], method = "backward")
-summary(regfit_bwd)
+# summary(regfit_bwd)
 
 # Compare coefficients
 tibble(variables = names(coef(regfit_full, 5)),
@@ -479,7 +485,7 @@ tibble(variable = names(colSums(is.na(df_clean))),
 
 Let's start by checking the relationships of each variable with > 100 `NA`'s to see if they appear significant.
 
-```{r echo=FALSE}
+```{r echo=FALSE, warning=FALSE}
 #Visualize the relationship to see if it looks significant (plot again)
 
 # hepatitis b
