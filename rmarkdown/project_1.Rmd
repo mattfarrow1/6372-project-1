@@ -271,9 +271,9 @@ summary(regfit_bwd)
 
 # Compare coefficients
 tibble(variables = names(coef(regfit_full, 5)),
-       full = coef(regfit_full, 5),
-       fwd = coef(regfit_fwd, 5),
-       bwd = coef(regfit_bwd, 5)) %>% 
+       full = round(coef(regfit_full, 5), 4),
+       fwd = round(coef(regfit_fwd, 5), 4),
+       bwd = round(coef(regfit_bwd, 5), 4)) %>% 
   gt()
 ```
 
@@ -281,7 +281,7 @@ tibble(variables = names(coef(regfit_full, 5)),
 
 ```{r warning=FALSE, echo=FALSE}
 # Set seed
-set.seed(1)
+set.seed(123)
 
 # Build test and training data sets, dropping country from regfit_best &
 # test_mat because I was getting a warning that 1 linear dependencies found
@@ -326,7 +326,7 @@ coef(regfit_best, which.min(val_errors))
 
 ```{r echo=FALSE}
 k <- 10
-set.seed(1)
+set.seed(123)
 folds <- sample(1:k, nrow(df_interp), replace = TRUE)
 cv_errors <- matrix(NA, k, consider, dimnames = list(NULL, paste(1:consider)))
 
@@ -379,6 +379,24 @@ final_model <-
 summary(final_model)
 ```
 
+### Work on ASE ##
+
+```{r}
+###############
+# WORK ON ASE
+testASE_b <- c()
+for (i in 1:16) {
+  predictions <- predict.regsubsets(object = regfit_bwd_2, newdata = test, id = i)
+  testASE[i] <- mean((test$life_expectancy - predictions)^2)
+}
+par(mfrow = c(1, 1))
+plot(1:16, testASE, type = "l", xlab = "# of predictors", ylab = "test vs train ASE")
+index <- which(testASE == min(testASE))
+points(index, testASE[index], col = "red", pch = 10)
+rss <- summary(regfit_bwd_2)$rss
+lines(1:16, rss / 518, lty = 3, col = "blue") # Dividing by n since ASE=RSS/sample size
+```
+
 ### Check Diagnostics
 
 ```{r echo=FALSE}
@@ -415,17 +433,43 @@ $Life~Expectancy = 47.106 - 0.013(Adult~Mortality) + 0.289(Total~Expenditure) - 
 ## KNN Model
 
 ```{r}
+# Impute the data set
+# my very inefficient way to accomplish this :)
+df_knn <- df_clean
+
+# df_knn <- df_knn %>% 
+#   mutate(hepatitis_b = replace_na(hepatitis_b, median(df_knn$hepatitis_b)),
+#          polio = replace_na(polio, median(df_knn$polio)),
+#          total_expenditure = replace_na(total_expenditure, median(df_knn$total_expenditure)))
+
+df_knn$hepatitis_b[is.na(df_knn$hepatitis_b)] <- median(df_knn$hepatitis_b,na.rm = TRUE)
+df_knn$polio[is.na(df_knn$polio)] <- median(df_knn$polio,na.rm = TRUE)
+df_knn$total_expenditure[is.na(df_knn$total_expenditure)] <- median(df_knn$total_expenditure,na.rm = TRUE)
+df_knn$diphtheria[is.na(df_knn$diphtheria)] <- median(df_knn$diphtheria,na.rm = TRUE)
+df_knn$bmi[is.na(df_knn$bmi)] <- mean(df_knn$bmi,na.rm = TRUE)
+df_knn$alcohol[is.na(df_knn$alcohol)] <- 0
+df_knn$thinness_5_9_years[is.na(df_knn$thinness_5_9_years)] <- 0
+
+df_knn <- df_knn %>% 
+  mutate(income_composition_of_resources = replace_na(income_composition_of_resources, mean(income_composition_of_resources, na.rm = TRUE)),
+         schooling = replace_na(schooling, mean(schooling, na.rm = TRUE)))
+
+#check new histograms to see if any shifts
+for (col in 4:ncol(df_knn)) {
+    hist(df_knn[,col], main=names(df_knn[col]))
+}
+
 # Set seed
 set.seed(123)
 
 # Standardize the data to prep for KNN first - everything except life expectancy
-preProcValues <- preProcess(df_interp[,-4], method = c("scale"))
-df_knn <- predict(preProcValues, df_interp)
+preProcValues <- preProcess(df_knn[,-4], method = c("scale"))
+df_knn_standard <- predict(preProcValues, df_knn)
 
 # Split training/test data sets
-inTraining <- createDataPartition(df_knn$life_expectancy, p = 0.75, list = FALSE)
-knn_train  <- df_knn[inTraining,]
-knn_test   <- df_knn[-inTraining,]
+inTraining <- createDataPartition(df_knn_standard$life_expectancy, p = 0.75, list = FALSE)
+knn_train  <- df_knn_standard[inTraining,]
+knn_test   <- df_knn_standard[-inTraining,]
 
 # Split the non-standardized data for trees
 
@@ -433,11 +477,135 @@ knn_test   <- df_knn[-inTraining,]
 set.seed(123)
 
 # Split training/test data sets
-inTraining <- createDataPartition(df_interp$life_expectancy, p = 0.75, list = FALSE)
-tree_train  <- df_interp[inTraining,]
-tree_test   <- df_interp[-inTraining,]
+inTraining <- createDataPartition(df_knn$life_expectancy, p = 0.75, list = FALSE)
+tree_train  <- df_knn[inTraining,]
+tree_test   <- df_knn[-inTraining,]
+
+# Set seed
+set.seed(567)
+
+# Set train control: 5 repeat, 10-fold CV
+ctrl <- trainControl(method="repeatedcv", number = 10, repeats = 5, returnResamp = "all") 
+
+# Run everthing with train control above
+knnFit <-
+  train(
+    life_expectancy ~ .,
+    data = knn_train,
+    method = "knn",
+    trControl = ctrl,
+    tuneLength = 10
+  )
+knnFit
+
+#check metrics on test set
+Predictions_knn5 <- predict(knnFit,newdata=knn_test)
+#performance measurement
+postResample(knn_test$life_expectancy,Predictions_knn5)
+
+trellis.par.set(caretTheme())
+plot(knnFit)  
+plot(knnFit, metric = "Rsquared")
+plot(knnFit, metric = "MAE")
+
+#try knn with k less than 5
+knnFit2 <-
+  train(
+    life_expectancy ~ .,
+    data = knn_train,
+    method = "knn",
+    trControl = ctrl,
+    tuneGrid = expand.grid(k = c(1, 3, 5))
+  )
+knnFit2
+
+#check metrics on test set
+Predictions_knn3 <- predict(knnFit2,newdata=knn_test)
+#performance measurement
+postResample(knn_test$life_expectancy,Predictions_knn3)
+
+trellis.par.set(caretTheme())
+plot(knnFit2)  
+plot(knnFit2, metric = "Rsquared")
+plot(knnFit2, metric = "MAE")
 ```
 
+## Trees
+
+```{r}
+#install.packages("tree")
+library(tree)
+#have to remove country because this tree function has max 32 levels
+tree1 <- tree(life_expectancy ~., data = trainSet2[,-1])
+summary(tree1)
+plot(tree1)
+
+#check tree performance
+
+cv.tree1 <- cv.tree(tree1)
+plot(cv.tree1$size,cv.tree1$dev,type='b')
+
+#check predictions
+yhat = predict(tree1,newdata=testSet2[,-1])
+plot(yhat,testSet2$life_expectancy)
+abline(0,1)
+mean((yhat - testSet2$life_expectancy)^2)
+
+#try random forest compared to single tree model
+#install.packages("randomForest")
+library(randomForest)
+set.seed(1)
+#have to remove country again
+rfFit <- randomForest(life_expectancy ~., data = trainSet2[,-1])
+rfFit
+
+#testing using all predictors for each tree
+set.seed(1)
+#have to remove country again
+rfFit2 <- randomForest(life_expectancy ~., data = trainSet2[,-1], mtry = 17)
+rfFit2
+
+#compare y-hat for the two random forest models
+yhat.rf <- predict(rfFit, newdata=testSet[,-1])
+yhat.rf2 <- predict(rfFit2, newdata=testSet[,-1])
+
+plot(yhat.rf,testSet2$life_expectancy)
+abline(0,1)
+
+plot(yhat.rf2,testSet2$life_expectancy)
+abline(0,1)
+```
+
+##LASSO
+
+```{r}
+#LASSO
+library(glmnet)
+#Formatting data for GLM net
+x=model.matrix(life_expectancy~.,df_clean)[,-1]
+y=df_clean$life_expectancy
+
+xtest<-model.matrix(life_expectancy~.,df_clean)[,-1]
+ytest<-df_clean$life_expectancy
+
+
+
+grid=10^seq(10,-2, length =100)
+lasso.mod=glmnet(x,y,alpha=1, lambda =grid)
+
+cv.out=cv.glmnet(x,y,alpha=1) #alpha=1 performs LASSO
+plot(cv.out)
+bestlambda<-cv.out$lambda.min  #Optimal penalty parameter.  You can make this call visually.
+bestlambda
+lasso.pred=predict (lasso.mod ,s=bestlambda ,newx=xtest)
+
+testMSE_LASSO<-mean((ytest-lasso.pred)^2)
+testMSE_LASSO
+```
+
+```{r, echo=T}
+coef(lasso.mod,s=bestlambda)
+```
 
 
 ## Objective 1
