@@ -14,8 +14,6 @@ library(hrbrthemes)
 library(car)
 library(leaps)
 library(caret)
-library(tree)
-library(randomForest)
 ```
 
 ## Introduction
@@ -37,7 +35,7 @@ df_clean <- janitor::clean_names(df)
 glimpse(df_clean)
 ```
 
-Looking at the data, there are 2,938 observatrions and 22 variables that cover various social, economic, and health-related factors. 
+Looking at the data, there are 2,938 observations and 22 variables that cover various social, economic, and health-related factors. 
 
 ## Exploratory Data Analysis
 
@@ -176,6 +174,54 @@ tibble(variable = names(colSums(is.na(df_interp))),
   gt()
 ```
 
+### Checking Summary
+
+Let's review our summary data to see if any suspicious values now still stand out for further investigation.
+
+```{r}
+summary(df_clean)
+
+summary(df_interp)
+```
+
+
+### Exploring Relationships
+
+Let's visualize some of the relationships between individual variables and the desired response variable, life expectancy.
+
+```{r}
+plot(df_clean$adult_mortality, df_clean$life_expectancy, main = "Adult Mortality vs Life Expectancy", xlab = "Adult Mortality", ylab = "Life Expectancy")
+
+```
+
+There appear to be two groups. Let's explore if we can determine the grouping.
+
+```{r}
+df_clean %>% ggplot(aes(x = adult_mortality, y = life_expectancy, color = status)) +
+  geom_point()
+
+df_clean %>% ggplot(aes(x = adult_mortality, y = life_expectancy, color = year)) +
+  geom_point()
+
+df_clean %>% ggplot(aes(x = adult_mortality, y = life_expectancy, color = hiv_aids)) +
+  geom_point()
+
+df_clean %>% ggplot(aes(x = adult_mortality, y = life_expectancy, color = percentage_expenditure)) +
+  geom_point()
+
+```
+It is unclear what the two groups are. Let's revisit later if needed.
+
+```{r}
+
+df_clean %>% ggplot(aes(x = hiv_aids, y = life_expectancy)) +
+  geom_point() +
+  geom_smooth()
+
+```
+
+There is a possible curved relationship between hiv_aids and life_expectancy. We will come back to this to determine if we need to modify this variable based on if it is important and if our residuals look okay.
+
 ### Analysis of Years
 
 Now that we've subsetted our variables and dealt with `NA`'s, let's look at how many records we now have by year.
@@ -184,10 +230,10 @@ Now that we've subsetted our variables and dealt with `NA`'s, let's look at how 
 df_interp %>% count(year)
 ```
 
-Our feature engineering dropped a number of records from 2000 and 2001, and almost all of the records from 2015. Let's go with the most recent "good" sample size (2011-2014) and again limit scope to these years only.
+Our feature engineering dropped a number of records from 2000 and 2001, and almost all of the records from 2015. Let us remove these years from our data set and therefore our scope for this analysis due to the small sample size.
 
 ```{r}
-df_interp <- df_interp %>% filter(year %in% 2011:2014)
+df_interp <- df_interp %>% filter(year %in% 2002:2014)
 ```
 
 ## Build the Model
@@ -206,6 +252,7 @@ regfit_full <-
   regsubsets(life_expectancy ~ .,
              df_interp[, -1],
              nvmax = consider)
+
 
 # Examine the regression summary
 reg_summary <- summary(regfit_full)
@@ -227,14 +274,21 @@ plot(reg_summary$rss,
      xlab = "Number of Variables",
      ylab = "RSS",
      type = "l")
+points(
+  which.min(reg_summary$rss),
+  reg_summary$rss[which.min(reg_summary$rss)],
+  col = "red",
+  cex = 2,
+  pch = 20
+)
 plot(reg_summary$adjr2,
      xlab = "Number of Variables",
      ylab = "Adjusted RSq",
      type = "l")
 which.max(reg_summary$adjr2)
 points(
-  11,
-  reg_summary$adjr2[11],
+  which.max(reg_summary$adjr2),
+  reg_summary$adjr2[which.max(reg_summary$adjr2)],
   col = "red",
   cex = 2,
   pch = 20
@@ -244,7 +298,7 @@ plot(reg_summary$cp,
      ylab = "Cp",
      type = "l")
 points(
-  10,
+  which.min(reg_summary$cp),
   reg_summary$cp[which.min(reg_summary$cp)],
   col = "red",
   cex = 2,
@@ -255,7 +309,7 @@ plot(reg_summary$bic,
      ylab = "BIC",
      type = "l")
 points(
-  5,
+  which.min(reg_summary$bic),
   reg_summary$bic[which.min(reg_summary$bic)],
   col = "red",
   cex = 2,
@@ -274,9 +328,12 @@ plot(regfit_full, scale = "bic")
 
 The model with the lowest BIC is the five-variable model that contains `adult_mortality`, `percentage_expenditure`, `total_expenditure`, `hiv_aids`, and `income_composition_of_resources`. We can use the `coef()` function to see the coefficient estimates associated with this model.
 
+
 ```{r echo=FALSE}
 coef(regfit_full, 5)
 ```
+
+
 
 ### Run Forward and Backward Stepwise Selection
 
@@ -391,7 +448,7 @@ coef(reg_best, 4)  # the number sets the number of variables we want
 final_model <-
   lm(
     life_expectancy ~ adult_mortality +
-      total_expenditure +
+      year +
       hiv_aids +
       income_composition_of_resources,
     data = df_interp
@@ -406,24 +463,17 @@ summary(final_model)
 ```{r}
 ###############
 # WORK ON ASE
-testASE_b <- c()
+testASE <- c()
 for (i in 1:16) {
-  predictions <-
-    predict.regsubsets(object = regfit_bwd_2,
-                       newdata = test,
-                       id = i)
-  testASE[i] <- mean((test$life_expectancy - predictions) ^ 2)
+  predictions <- predict.regsubsets(object = regfit_best, newdata = test_mat, id = i)
+  testASE[i] <- mean((test_mat$life_expectancy - predictions)^2)
 }
 par(mfrow = c(1, 1))
-plot(1:16,
-     testASE,
-     type = "l",
-     xlab = "# of predictors",
-     ylab = "test vs train ASE")
+plot(1:16, testASE, type = "l", xlab = "# of predictors", ylab = "test vs train ASE")
 index <- which(testASE == min(testASE))
 points(index, testASE[index], col = "red", pch = 10)
 rss <- summary(regfit_bwd_2)$rss
-lines(1:16, rss / 518, lty = 3, col = "blue") # Dividing by n since ASE=RSS/sample size
+lines(1:16, rss / 1910, lty = 3, col = "blue") # Dividing by n since ASE=RSS/sample size
 ```
 
 ### Check Diagnostics
@@ -459,90 +509,184 @@ plot(df_interp$life_expectancy,
 
 $Life~Expectancy = 47.106 - 0.013(Adult~Mortality) + 0.289(Total~Expenditure) - 0.911(HIV/AIDS) + 36.649(Income~Composition~of~Resources)$
 
-## Linear Prediction Model
+## Predictive Linear Model
 
-Let's start again with the df_clean dataset to perform feature engineering. We have already removed at this point variables that are highly correlated and rows/countries with NA for life expectancy. This leaves us with 17 other potential predictors and still quite a few NA values. We know we cannot have NA values to perform Ridge Regression or LASSO so need to either remove them, impute them, or change them to 0.
+Since we did not get a subset of variables using reg subsets on the full data set (after our feature engineering), let's try ridge regression to select variables.
 
-# Deal with missing values
 ```{r}
-# Check for missing values
-tibble(variable = names(colSums(is.na(df_clean))),
-       missing = colSums(is.na(df_clean))) %>% 
-  gt()
+#Check summary again
+summary(df_clean)
 ```
 
-Let's start by checking the relationships of each variable with > 100 NA's to see if they appear significant.
-
 ```{r}
-#Visualize the relationship to see if it looks significant (plot again)
-#hepatitis b
-df_clean %>% ggplot(aes(x = hepatitis_b, y = life_expectancy)) +
-  geom_point() +
-  geom_smooth()
 
-#total expenditure
-df_clean %>% ggplot(aes(x = total_expenditure, y = life_expectancy)) +
-  geom_point() +
-  geom_smooth()
-
-#alcohol
-df_clean %>% ggplot(aes(x = alcohol, y = life_expectancy)) +
-  geom_point() +
-  geom_smooth()
-
-#income comp of res
-df_clean %>% ggplot(aes(x = income_composition_of_resources, y = life_expectancy)) +
-  geom_point() +
-  geom_smooth()
-
-#schooling
-df_clean %>% ggplot(aes(x = schooling, y = life_expectancy)) +
-  geom_point() +
-  geom_smooth()
-
-```
-The trend looks pretty flat for hepatitis_b, total_expenditure, and alcohol so I think it is safe for us to go ahead and remove these columns. However there appears to be some relationship for schooling and possibly for income composition of resources as well, so instead of imputing these values let's go ahead and remove the NA's for these two variables.
-
-```{r}
-#remove hepatitis b and total_expenditure
-df_predict <- df_clean %>% 
-  select(-c(hepatitis_b, total_expenditure, alcohol))
-
-#remove the remaining NA's
-df_predict <- na.omit(df_predict)
-
-#check for NA's
-tibble(variable = names(colSums(is.na(df_predict))),
-       missing = colSums(is.na(df_predict))) %>% 
-  gt()
 
 ```
 
-We now have 2,728 observations and 15 variables. Let's proceed to variable selection.
+
+
+## KNN Model
+
+```{r}
+# Impute the data set
+# my very inefficient way to accomplish this :)
+df_knn <- df_clean
+
+# df_knn <- df_knn %>% 
+#   mutate(hepatitis_b = replace_na(hepatitis_b, median(df_knn$hepatitis_b)),
+#          polio = replace_na(polio, median(df_knn$polio)),
+#          total_expenditure = replace_na(total_expenditure, median(df_knn$total_expenditure)))
+
+df_knn$hepatitis_b[is.na(df_knn$hepatitis_b)] <- median(df_knn$hepatitis_b,na.rm = TRUE)
+df_knn$polio[is.na(df_knn$polio)] <- median(df_knn$polio,na.rm = TRUE)
+df_knn$total_expenditure[is.na(df_knn$total_expenditure)] <- median(df_knn$total_expenditure,na.rm = TRUE)
+df_knn$diphtheria[is.na(df_knn$diphtheria)] <- median(df_knn$diphtheria,na.rm = TRUE)
+df_knn$bmi[is.na(df_knn$bmi)] <- mean(df_knn$bmi,na.rm = TRUE)
+df_knn$alcohol[is.na(df_knn$alcohol)] <- 0
+df_knn$thinness_5_9_years[is.na(df_knn$thinness_5_9_years)] <- 0
+
+df_knn <- df_knn %>% 
+  mutate(income_composition_of_resources = replace_na(income_composition_of_resources, mean(income_composition_of_resources, na.rm = TRUE)),
+         schooling = replace_na(schooling, mean(schooling, na.rm = TRUE)))
+
+#check new histograms to see if any shifts
+#for (col in 4:ncol(df_knn)) {
+#    hist(df_knn[,col], main=names(df_knn[col]))
+#}
+
+# Set seed
+set.seed(123)
+
+# Standardize the data to prep for KNN first - everything except life expectancy
+preProcValues <- preProcess(df_knn[,-4], method = c("center", "scale"))
+df_knn_standard <- predict(preProcValues, df_knn)
+
+# Split training/test data sets
+inTraining <- createDataPartition(df_knn_standard$life_expectancy, p = 0.75, list = FALSE)
+knn_train  <- df_knn_standard[inTraining,]
+knn_test   <- df_knn_standard[-inTraining,]
+
+# Split the non-standardized data for trees
+
+# Set seed
+set.seed(123)
+
+# Split training/test data sets
+inTraining <- createDataPartition(df_knn$life_expectancy, p = 0.75, list = FALSE)
+tree_train  <- df_knn[inTraining,]
+tree_test   <- df_knn[-inTraining,]
+
+# Set seed
+set.seed(567)
+
+# Set train control: 5 repeat, 10-fold CV
+ctrl <- trainControl(method="repeatedcv", number = 10, repeats = 5, returnResamp = "all") 
+
+# Run everthing with train control above
+knnFit <-
+  train(
+    life_expectancy ~ .,
+    data = knn_train,
+    method = "knn",
+    trControl = ctrl,
+    tuneLength = 10
+  )
+knnFit
+
+#check metrics on test set
+Predictions_knn5 <- predict(knnFit,newdata=knn_test)
+#performance measurement
+postResample(knn_test$life_expectancy,Predictions_knn5)
+
+trellis.par.set(caretTheme())
+plot(knnFit)  
+plot(knnFit, metric = "Rsquared")
+plot(knnFit, metric = "MAE")
+
+#try knn with k less than 5
+knnFit2 <-
+  train(
+    life_expectancy ~ .,
+    data = knn_train,
+    method = "knn",
+    trControl = ctrl,
+    tuneGrid = expand.grid(k = c(1, 3, 5))
+  )
+knnFit2
+
+#check metrics on test set
+Predictions_knn3 <- predict(knnFit2,newdata=knn_test)
+#performance measurement
+postResample(knn_test$life_expectancy,Predictions_knn3)
+
+trellis.par.set(caretTheme())
+plot(knnFit2)  
+plot(knnFit2, metric = "Rsquared")
+plot(knnFit2, metric = "MAE")
+```
+
+## Trees
+
+```{r}
+#install.packages("tree")
+library(tree)
+#have to remove country because this tree function has max 32 levels
+tree1 <- tree(life_expectancy ~., data = trainSet2[,-1])
+summary(tree1)
+plot(tree1)
+
+#check tree performance
+
+cv.tree1 <- cv.tree(tree1)
+plot(cv.tree1$size,cv.tree1$dev,type='b')
+
+#check predictions
+yhat = predict(tree1,newdata=testSet2[,-1])
+plot(yhat,testSet2$life_expectancy)
+abline(0,1)
+mean((yhat - testSet2$life_expectancy)^2)
+
+#try random forest compared to single tree model
+#install.packages("randomForest")
+library(randomForest)
+set.seed(1)
+#have to remove country again
+rfFit <- randomForest(life_expectancy ~., data = trainSet2[,-1])
+rfFit
+
+#testing using all predictors for each tree
+set.seed(1)
+#have to remove country again
+rfFit2 <- randomForest(life_expectancy ~., data = trainSet2[,-1], mtry = 17)
+rfFit2
+
+#compare y-hat for the two random forest models
+yhat.rf <- predict(rfFit, newdata=testSet[,-1])
+yhat.rf2 <- predict(rfFit2, newdata=testSet[,-1])
+
+plot(yhat.rf,testSet2$life_expectancy)
+abline(0,1)
+
+plot(yhat.rf2,testSet2$life_expectancy)
+abline(0,1)
+```
 
 ##LASSO
-
-####UPDATE HERE! ###
 
 ```{r}
 #LASSO
 library(glmnet)
 #Formatting data for GLM net
-x=model.matrix(life_expectancy~.,df_predict)[,-1]
-y=df_predict$life_expectancy
+x=model.matrix(life_expectancy~.,df_clean)[,-1]
+y=df_clean$life_expectancy
 
-####NEED TO UPDATE BELOW HERE
-xtest<-model.matrix(life_expectancy~.,df_predict)[,-1]
-ytest<-df_predict$life_expectancy
+xtest<-model.matrix(life_expectancy~.,df_clean)[,-1]
+ytest<-df_clean$life_expectancy
+
+
 
 grid=10^seq(10,-2, length =100)
 lasso.mod=glmnet(x,y,alpha=1, lambda =grid)
-dim(coef(ridge.mod))
-
-#test and train split
-set.seed(1)
-train <- 
-
 
 cv.out=cv.glmnet(x,y,alpha=1) #alpha=1 performs LASSO
 plot(cv.out)
@@ -557,209 +701,6 @@ testMSE_LASSO
 ```{r, echo=T}
 coef(lasso.mod,s=bestlambda)
 ```
-
-## KNN Model
-
-For the KNN model, we will try to impute some values based on the distribution (either choosing the mean, median, or 0) and test how that impacts our metrics.
-
-```{r}
-# Copy the data
-df_knn <- df_clean
-
-# Impute the data set
-df_knn <- df_knn %>%
-  mutate(across(
-    c(hepatitis_b, polio, total_expenditure, diphtheria),
-    ~ replace_na(., median(.x, na.rm = TRUE))
-  )) %>% 
-  mutate(across(
-    c(bmi, income_composition_of_resources, schooling),
-    ~ replace_na(., mean(.x, na.rm = TRUE))
-  )) %>% 
-  mutate(across(
-    c(alcohol, thinness_5_9_years),
-    ~ replace_na(., 0)
-  ))
-
-# Check the histograms to see if there any shifts after imputing
-for (col in 4:ncol(df_knn)) {
-    hist(df_knn[,col], main=names(df_knn[col]))
-}
-
-# Set seed
-set.seed(123)
-
-# Standardize the data to prep for KNN first - everything except life expectancy
-preProcValues <- preProcess(df_knn[, -4], method = c("scale"))
-df_knn_standard <- predict(preProcValues, df_knn)
-
-# Split training/test data sets
-inTraining <-
-  createDataPartition(df_knn_standard$life_expectancy,
-                      p = 0.75,
-                      list = FALSE)
-knn_train  <- df_knn_standard[inTraining, ]
-knn_test   <- df_knn_standard[-inTraining, ]
-```
-
-Split the non-standardized data for trees
-
-```{r}
-# Set seed
-set.seed(123)
-
-# Split training/test data sets
-inTraining <- createDataPartition(df_knn$life_expectancy, p = 0.75, list = FALSE)
-tree_train  <- df_knn[inTraining,]
-tree_test   <- df_knn[-inTraining,]
-
-# Set seed
-set.seed(567)
-
-# Set train control: 5 repeat, 10-fold CV
-ctrl <-
-  trainControl(
-    method = "repeatedcv",
-    number = 10,
-    repeats = 5,
-    returnResamp = "all"
-  ) 
-
-# Run everything with the train control above
-knnFit <-
-  train(
-    life_expectancy ~ .,
-    data = knn_train,
-    method = "knn",
-    trControl = ctrl,
-    tuneLength = 10
-  )
-knnFit
-
-# Check the metrics on the test set
-Predictions_knn5 <- predict(knnFit, newdata = knn_test)
-
-# Performance measurement
-postResample(knn_test$life_expectancy, Predictions_knn5)
-
-# Set parameters for trellis displays
-trellis.par.set(caretTheme())
-
-# Plotting
-plot(knnFit, main = "knnFit Results")  
-plot(knnFit, metric = "Rsquared", main = "knnFit Results (R-Squared)")
-plot(knnFit, metric = "MAE", main = "knnFit Results (MAE)")
-
-# Try another knn with a k value of less than 5
-knnFit2 <-
-  train(
-    life_expectancy ~ .,
-    data = knn_train,
-    method = "knn",
-    trControl = ctrl,
-    tuneGrid = expand.grid(k = c(1, 3, 5))
-  )
-knnFit2
-
-# Check the metrics on the test set
-Predictions_knn3 <- predict(knnFit2, newdata = knn_test)
-
-# Performance measurement
-postResample(knn_test$life_expectancy, Predictions_knn3)
-
-# Set parameters for trellis displays
-trellis.par.set(caretTheme())
-
-# Plotting
-plot(knnFit2, main = "knnFit2 Results")  
-plot(knnFit2, metric = "Rsquared", main = "knnFit2 Results (R-Squared)")
-plot(knnFit2, metric = "MAE", main = "knnFit2 Results (MAE)")
-```
-
-## Variable Selection for KNN
-
-Let's now test KNN using the same 4 predictors from our first linear model and compare our results with all of the predictors.
-
-```{r}
-knnFit3 <-
-  train(
-    life_expectancy ~ adult_mortality +
-      total_expenditure +
-      hiv_aids +
-      income_composition_of_resources,
-    data = knn_train,
-    method = "knn",
-    trControl = ctrl,
-    tuneLength = 10
-  )
-knnFit3
-
-```
-
-```{r}
-#check metrics on test set
-Predictions_knnfit3 <- predict(knnFit3,newdata=knn_test)
-#performance measurement
-postResample(knn_test$life_expectancy,Predictions_knnfit3)
-
-plot(knnFit3)  
-plot(knnFit3, metric = "Rsquared")
-plot(knnFit3, metric = "MAE")
-```
-
-```{r}
-#here I would like to overlay the RMSE for each of these KNN fits for comparison
-
-```
-
-We see that using all of the predictors and then comparing with just the four ones we deemed important from our first model (which was on a much more limited data set) gives us approximately the same adj R2 value and RMSE. When applying to our test data set, it does not appear that our models are over-fitting as we do not see a big shift in our metrics, even though an adj R2 in the 90's is normally a warning sign for an over-fitting model. 
-
-## Trees
-
-Let's run some tree models to see if we get better metrics that we think may be less susceptible to over-fitting.
-
-```{r}
-# Remove country because this tree function has a maximum of 32 levels
-tree1 <- tree(life_expectancy ~ ., data = df_knn[, -1])
-summary(tree1)
-plot(tree1)
-
-# Check tree performance
-cv.tree1 <- cv.tree(tree1)
-plot(cv.tree1$size, cv.tree1$dev, type = 'b')
-
-# Check the predictions
-yhat = predict(tree1, newdata = df_knn[, -1])
-plot(yhat, df_knn$life_expectancy)
-abline(0, 1)
-mean((yhat - df_knn$life_expectancy) ^ 2)
-
-# Try a random forest compared to a single tree model
-set.seed(1)
-
-# Remove country again
-rfFit <- randomForest(life_expectancy ~ ., data = df_knn[, -1])
-rfFit
-
-# Test using all predictors for each tree
-set.seed(1)
-
-# Have to remove country again
-rfFit2 <- randomForest(life_expectancy ~., data = df_knn[,-1], mtry = 17)
-rfFit2
-
-#compare y-hat for the two random forest models
-yhat.rf <- predict(rfFit, newdata = df_knn[, -1])
-yhat.rf2 <- predict(rfFit2, newdata = df_knn[, -1])
-
-plot(yhat.rf, df_knn$life_expectancy)
-abline(0,1)
-
-plot(yhat.rf2,df_knn$life_expectancy)
-abline(0,1)
-```
-
-
 
 
 ## Objective 1
