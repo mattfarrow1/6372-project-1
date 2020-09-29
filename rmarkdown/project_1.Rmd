@@ -148,13 +148,20 @@ tibble(variable = names(colSums(is.na(df_clean))),
 
 We have now excluded these countries from our scope: Cook Islands, Dominica, Marshall Islands, Monaco, Nauru, Niue, Palau, Saint Kitts and Nevis, San Marino, and Tuvalu. 
 
-
-Investigating the remaining NA's - Hepatitis B is now our variable with the most NA's at 553. Let's see if there is either a year or a country that has the majority of the NA's.
+Investigating the remaining `NA`'s - Hepatitis B is now our variable with the most `NA`'s at 553. Let's see if there is either a year or a country that has the majority of the `NA`'s.
 
 ```{r}
-#Matt - how can I group by/summarize to just a two column table with country in one column and NA count in the other?
-df_clean$country[which(is.na(df_clean$hepatitis_b))]
-df_clean$year[which(is.na(df_clean$hepatitis_b))]
+# Look at how many missing hepatitis measurements there are by country
+df_clean %>% 
+  group_by(country) %>% 
+  count(missing = is.na(hepatitis_b)) %>% 
+  filter(missing == TRUE) %>% 
+  select(-missing) %>% 
+  rename(missing = n)
+
+# #Matt - how can I group by/summarize to just a two column table with country in one column and NA count in the other?
+# df_clean$country[which(is.na(df_clean$hepatitis_b))]
+# df_clean$year[which(is.na(df_clean$hepatitis_b))]
 
 #Visualize the relationship to see if it looks significant
 df_clean %>% ggplot(aes(x = hepatitis_b, y = life_expectancy)) +
