@@ -128,9 +128,12 @@ tibble(variable = names(colSums(is.na(df_clean))),
   gt()
 ```
 
-Drop all rows where life expectancy is `NA`
+Drop all rows where life expectancy is `NA`. We will limit scope of our analysis to not include these countries.
 
 ```{r}
+#Check which countries have NA rows for life expectancy
+df_clean$country[which(is.na(df_clean$life_expectancy))]
+
 # Drop all rows where life expectancy is NA
 df_clean <- df_clean %>% 
   filter(!is.na(life_expectancy))
@@ -141,7 +144,24 @@ tibble(variable = names(colSums(is.na(df_clean))),
   gt()
 ```
 
-Drop remaining rows with NA's for the interpretable model
+We have now excluded these countries from our scope: Cook Islands, Dominica, Marshall Islands, Monaco, Nauru, Niue, Palau, Saint Kitts and Nevis, San Marino, and Tuvalu. 
+
+
+Investigating the remaining NA's - Hepatitis B is now our variable with the most NA's at 553. Let's see if there is either a year or a country that has the majority of the NA's.
+
+```{r}
+#Matt - how can I group by/summarize to just a two column table with country in one column and NA count in the other?
+df_clean$country[which(is.na(df_clean$hepatitis_b))]
+df_clean$year[which(is.na(df_clean$hepatitis_b))]
+
+#Visualize the relationship to see if it looks significant
+df_clean %>% ggplot(aes(x = hepatitis_b, y = life_expectancy)) +
+  geom_point() +
+  geom_smooth()
+```
+
+Our options are to either drop all of the NA's, impute the values, or fill with 0's. For our interpretable model, let's drop the NA's and we will revisit them for our predictive model.
+
 
 ```{r}
 # Drop remaining rows with NA's for the interpretable model
@@ -162,7 +182,7 @@ Now that we've subsetted our variables and dealt with `NA`'s, let's look at how 
 df_interp %>% count(year)
 ```
 
-Our feature engineering dropped a number of records from 2000 and 2001, and almost all of the records from 2015. Let's go with the most recent "good" sample size (2011-2014).
+Our feature engineering dropped a number of records from 2000 and 2001, and almost all of the records from 2015. Let's go with the most recent "good" sample size (2011-2014) and again limit scope to these years only.
 
 ```{r}
 df_interp <- df_interp %>% filter(year %in% 2011:2014)
@@ -430,7 +450,108 @@ plot(df_interp$life_expectancy,
 
 $Life~Expectancy = 47.106 - 0.013(Adult~Mortality) + 0.289(Total~Expenditure) - 0.911(HIV/AIDS) + 36.649(Income~Composition~of~Resources)$
 
+## Linear Prediction Model
+
+Let's start again with the df_clean dataset to perform feature engineering. We have already removed at this point variables that are highly correlated and rows/countries with NA for life expectancy. This leaves us with 17 other potential predictors and still quite a few NA values. We know we cannot have NA values to perform Ridge Regression or LASSO so need to either remove them, impute them, or change them to 0.
+
+# Deal with missing values
+```{r}
+# Check for missing values
+tibble(variable = names(colSums(is.na(df_clean))),
+       missing = colSums(is.na(df_clean))) %>% 
+  gt()
+```
+
+Let's start by checking the relationships of each variable with > 100 NA's to see if they appear significant.
+
+```{r}
+#Visualize the relationship to see if it looks significant (plot again)
+#hepatitis b
+df_clean %>% ggplot(aes(x = hepatitis_b, y = life_expectancy)) +
+  geom_point() +
+  geom_smooth()
+
+#total expenditure
+df_clean %>% ggplot(aes(x = total_expenditure, y = life_expectancy)) +
+  geom_point() +
+  geom_smooth()
+
+#alcohol
+df_clean %>% ggplot(aes(x = alcohol, y = life_expectancy)) +
+  geom_point() +
+  geom_smooth()
+
+#income comp of res
+df_clean %>% ggplot(aes(x = income_composition_of_resources, y = life_expectancy)) +
+  geom_point() +
+  geom_smooth()
+
+#schooling
+df_clean %>% ggplot(aes(x = schooling, y = life_expectancy)) +
+  geom_point() +
+  geom_smooth()
+
+```
+The trend looks pretty flat for hepatitis_b, total_expenditure, and alcohol so I think it is safe for us to go ahead and remove these columns. However there appears to be some relationship for schooling and possibly for income composition of resources as well, so instead of imputing these values let's go ahead and remove the NA's for these two variables.
+
+```{r}
+#remove hepatitis b and total_expenditure
+df_predict <- df_clean %>% 
+  select(-c(hepatitis_b, total_expenditure, alcohol))
+
+#remove the remaining NA's
+df_predict <- na.omit(df_predict)
+
+#check for NA's
+tibble(variable = names(colSums(is.na(df_predict))),
+       missing = colSums(is.na(df_predict))) %>% 
+  gt()
+
+```
+
+We now have 2,728 observations and 15 variables. Let's proceed to variable selection.
+
+##LASSO
+
+####UPDATE HERE! ###
+
+```{r}
+#LASSO
+library(glmnet)
+#Formatting data for GLM net
+x=model.matrix(life_expectancy~.,df_predict)[,-1]
+y=df_predict$life_expectancy
+
+####NEED TO UPDATE BELOW HERE
+xtest<-model.matrix(life_expectancy~.,df_predict)[,-1]
+ytest<-df_predict$life_expectancy
+
+grid=10^seq(10,-2, length =100)
+lasso.mod=glmnet(x,y,alpha=1, lambda =grid)
+dim(coef(ridge.mod))
+
+#test and train split
+set.seed(1)
+train <- 
+
+
+cv.out=cv.glmnet(x,y,alpha=1) #alpha=1 performs LASSO
+plot(cv.out)
+bestlambda<-cv.out$lambda.min  #Optimal penalty parameter.  You can make this call visually.
+bestlambda
+lasso.pred=predict (lasso.mod ,s=bestlambda ,newx=xtest)
+
+testMSE_LASSO<-mean((ytest-lasso.pred)^2)
+testMSE_LASSO
+```
+
+```{r, echo=T}
+coef(lasso.mod,s=bestlambda)
+```
+
 ## KNN Model
+
+For the KNN model, we will try to impute some values based on the distribution (either choosing the mean, median, or 0) and test how that impacts our metrics.
 
 ```{r}
 # Impute the data set
@@ -530,7 +651,47 @@ plot(knnFit2, metric = "Rsquared")
 plot(knnFit2, metric = "MAE")
 ```
 
+## Variable Selection for KNN
+
+Let's now test KNN using the same 4 predictors from our first linear model and compare our results with all of the predictors.
+
+```{r}
+knnFit3 <-
+  train(
+    life_expectancy ~ adult_mortality +
+      total_expenditure +
+      hiv_aids +
+      income_composition_of_resources,
+    data = knn_train,
+    method = "knn",
+    trControl = ctrl,
+    tuneLength = 10
+  )
+knnFit3
+
+```
+
+```{r}
+#check metrics on test set
+Predictions_knnfit3 <- predict(knnFit3,newdata=knn_test)
+#performance measurement
+postResample(knn_test$life_expectancy,Predictions_knnfit3)
+
+plot(knnFit3)  
+plot(knnFit3, metric = "Rsquared")
+plot(knnFit3, metric = "MAE")
+```
+
+```{r}
+#here I would like to overlay the RMSE for each of these KNN fits for comparison
+
+```
+
+We see that using all of the predictors and then comparing with just the four ones we deemed important from our first model (which was on a much more limited data set) gives us approximately the same adj R2 value and RMSE. When applying to our test data set, it does not appear that our models are over-fitting as we do not see a big shift in our metrics, even though an adj R2 in the 90's is normally a warning sign for an over-fitting model. 
+
 ## Trees
+
+Let's run some tree models to see if we get better metrics that we think may be less susceptible to over-fitting.
 
 ```{r}
 #install.packages("tree")
@@ -576,36 +737,7 @@ plot(yhat.rf2,testSet2$life_expectancy)
 abline(0,1)
 ```
 
-##LASSO
 
-```{r}
-#LASSO
-library(glmnet)
-#Formatting data for GLM net
-x=model.matrix(life_expectancy~.,df_clean)[,-1]
-y=df_clean$life_expectancy
-
-xtest<-model.matrix(life_expectancy~.,df_clean)[,-1]
-ytest<-df_clean$life_expectancy
-
-
-
-grid=10^seq(10,-2, length =100)
-lasso.mod=glmnet(x,y,alpha=1, lambda =grid)
-
-cv.out=cv.glmnet(x,y,alpha=1) #alpha=1 performs LASSO
-plot(cv.out)
-bestlambda<-cv.out$lambda.min  #Optimal penalty parameter.  You can make this call visually.
-bestlambda
-lasso.pred=predict (lasso.mod ,s=bestlambda ,newx=xtest)
-
-testMSE_LASSO<-mean((ytest-lasso.pred)^2)
-testMSE_LASSO
-```
-
-```{r, echo=T}
-coef(lasso.mod,s=bestlambda)
-```
 
 
 ## Objective 1
