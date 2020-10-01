@@ -24,7 +24,7 @@ Using the World Health Organization (WHO) data compiled by Kumar Rajarshi, Deeks
 
 ## Data Description
 
-Description and context of the Life Expectancy (WHO) dataset can be found [here](https://www.kaggle.com/kumarajarshi/life-expectancy-who). Data has been compiled from several different data sets into a final data set that represents health factors for 193 countries between the years of 2000-2015.
+Description and context of the Life Expectancy (WHO) data set can be found [here](https://www.kaggle.com/kumarajarshi/life-expectancy-who). Data has been compiled from several different data sets into a final data set that represents health factors for 193 countries between the years of 2000-2015.
 
 ```{r load-data, echo=FALSE, message=FALSE}
 # Load data
@@ -37,11 +37,11 @@ df_clean <- janitor::clean_names(df)
 glimpse(df_clean)
 ```
 
-Looking at the data, there are 2,938 observatrions and 22 variables that cover various social, economic, and health-related factors. 
+Looking at the data, there are 2,938 observations and 22 variables that cover various social, economic, and health-related factors.
 
 ## Exploratory Data Analysis
 
-We'll start by taking a closer look at life expectancy. 
+We'll start by taking a closer look at life expectancy.
 
 ```{r echo=FALSE, message=FALSE}
 df_clean %>% 
@@ -146,7 +146,7 @@ tibble(variable = names(colSums(is.na(df_clean))),
   gt()
 ```
 
-We have now excluded these countries from our scope: Cook Islands, Dominica, Marshall Islands, Monaco, Nauru, Niue, Palau, Saint Kitts and Nevis, San Marino, and Tuvalu. 
+We have now excluded these countries from our scope: Cook Islands, Dominica, Marshall Islands, Monaco, Nauru, Niue, Palau, Saint Kitts and Nevis, San Marino, and Tuvalu.
 
 Investigating the remaining `NA`'s - Hepatitis B is now our variable with the most `NA`'s at 553. Let's see if there is either a year or a country that has the majority of the `NA`'s.
 
@@ -203,7 +203,7 @@ df_interp <- df_interp %>% filter(year %in% 2011:2014)
 
 ## Build the Model
 
-Now that we've finished our feature engineering, let's start building our interpretable model. 
+Now that we've finished our feature engineering, let's start building our interpretable model.
 
 ```{r echo=FALSE}
 # Set the maximum number of variables to consider in the model. Although the
@@ -341,7 +341,7 @@ coef(regfit_best, which.min(val_errors))
 ```
 
 ```{r echo=FALSE}
-# Write a prediction fuction
+# Write a prediction function
 predict_regsubsets <- function(object, newdata, id, ...) {
   form <- as.formula(object$call[[2]])
   mat <- model.matrix(form, newdata)
@@ -483,7 +483,7 @@ tibble(variable = names(colSums(is.na(df_clean))),
   gt()
 ```
 
-Let's start by checking the relationships of each variable with > 100 `NA`'s to see if they appear significant.
+Let's start by checking the relationships of each variable with \> 100 `NA`'s to see if they appear significant.
 
 ```{r echo=FALSE, warning=FALSE}
 #Visualize the relationship to see if it looks significant (plot again)
@@ -633,8 +633,6 @@ out <- glmnet(x, y, alpha = 1)
 lasso_coef <- predict(out, type = "coefficients", s = bestlambda)[1:14,]
 lasso_coef[lasso_coef != 0]
 ```
-
-
 
 ```{r eval=FALSE}
 #### NEED TO UPDATE BELOW HERE
@@ -815,7 +813,7 @@ plot(knnFit3, metric = "MAE")
 
 ```
 
-We see that using all of the predictors and then comparing with just the four ones we deemed important from our first model (which was on a much more limited data set) gives us approximately the same adj R2 value and RMSE. When applying to our test data set, it does not appear that our models are over-fitting as we do not see a big shift in our metrics, even though an adj R2 in the 90's is normally a warning sign for an over-fitting model. 
+We see that using all of the predictors and then comparing with just the four ones we deemed important from our first model (which was on a much more limited data set) gives us approximately the same adj R2 value and RMSE. When applying to our test data set, it does not appear that our models are over-fitting as we do not see a big shift in our metrics, even though an adj R2 in the 90's is normally a warning sign for an over-fitting model.
 
 ## Trees
 
@@ -862,9 +860,6 @@ plot(yhat.rf2,df_knn$life_expectancy)
 abline(0,1)
 ```
 
-
-
-
 ## Objective 1
 
 ### Restatement of Problem and the Overall Approach to Solve It
@@ -873,41 +868,41 @@ abline(0,1)
 
 #### Type of Selection
 
-- LASSO
-- RIDGE
-- ELASTIC NET
-- Stepwise
-- Forward
-- Backward
-- Manual / Intuition
-- A mix of all of the above
+-   LASSO
+-   RIDGE
+-   ELASTIC NET
+-   Stepwise
+-   Forward
+-   Backward
+-   Manual / Intuition
+-   A mix of all of the above
 
 #### Checking Assumptions
 
-- Residual Plots
-- Influential point analysis (Cook’s D and Leverage)
+-   Residual Plots
+-   Influential point analysis (Cook's D and Leverage)
 
 #### Compare Competing Models
 
-Via:  Training and test set split or CV
-Possible Metrics: ASE (Required), AIC, BIC, adj R2, are all welcome additions
-	
+Via: Training and test set split or CV Possible Metrics: ASE (Required), AIC, BIC, adj R2, are all welcome additions
+
 #### Parameter Interpretation (Simple model only)
 
-- Interpretation 
-- Confidence Intervals
+-   Interpretation
+-   Confidence Intervals
 
-#### Additional Details on a more complicated regression model 
+#### Additional Details on a more complicated regression model
 
 ## Objective 2 Deliverable (see above)
-	
-Final conclusions from the analyses of Objective 1’s interpretable model and include comments on what model would be recommended if prediction was the only goal (comparing all models considered).  
 
-## Appendix 
+Final conclusions from the analyses of Objective 1's interpretable model and include comments on what model would be recommended if prediction was the only goal (comparing all models considered).
+
+## Appendix
 
 ### Figures
 
 ### R Code
+
 ```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
 
 ```
