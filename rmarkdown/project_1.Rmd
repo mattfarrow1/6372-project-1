@@ -20,7 +20,10 @@ library(randomForest)
 
 ## Introduction
 
-Using the World Health Organization (WHO) data compiled by Kumar Rajarshi, Deeksha Russell, and Duan Wang, we attempted to predict which factors affect life expectancy.
+Using the World Health Organization (WHO) data compiled by Kumar Rajarshi, Deeksha Russell, and Duan Wang, we developed three different models:
+- The first model was designed to be easily intepreted using linear regression
+- The second model was designed to be used as a predictive tool using linear regression
+- The third model was developed using non-parametric methods for prediction
 
 ## Data Description
 
@@ -37,7 +40,7 @@ df_clean <- janitor::clean_names(df)
 glimpse(df_clean)
 ```
 
-Looking at the data, there are 2,938 observatrions and 22 variables that cover various social, economic, and health-related factors. 
+Looking at the data, there are 2,938 observations and 22 variables that cover various social, economic, and health-related factors. 
 
 ## Exploratory Data Analysis
 
@@ -557,6 +560,31 @@ tibble(variable = names(colSums(is.na(df_predict))),
 
 We now have 2,728 observations and 15 variables. Let's proceed to variable selection.
 
+```{r}
+#replot after removing Na's
+
+# income composition of resources
+df_predict %>% ggplot(aes(x = income_composition_of_resources, y = life_expectancy)) +
+  # geom_point() +
+  geom_jitter(alpha = 0.3) +
+  geom_smooth() +
+  labs(title = "Relationship of Income Composition of Resources\nand Life Expectancy",
+       x = "Income Composition of Resources",
+       y = "Life Expectancy") +
+  theme_ipsum()
+
+# schooling
+df_predict %>% ggplot(aes(x = schooling, y = life_expectancy)) +
+  # geom_point() +
+  geom_jitter(alpha = 0.3) +
+  geom_smooth() +
+  labs(title = "Relationship of Schooling and Life Expectancy",
+       x = "Schooling",
+       y = "Life Expectancy") +
+  theme_ipsum()
+```
+
+
 ## Ridge Regression
 
 ```{r}
@@ -565,7 +593,7 @@ library(glmnet)
 # Ridge regression and lasso require the format 'x matrix' and 'y'. The
 # model.matrix() function produces a matrix and automatically transforms
 # qualitative variables into dummy variables.
-x <- model.matrix(life_expectancy ~ ., df_predict)[, -1]
+x <- model.matrix(life_expectancy ~ ., df_predict[,-1])[, -1]
 y <- df_predict$life_expectancy
 
 # Run ridge regression
@@ -584,8 +612,8 @@ ridge_mod <- glmnet(x[train, ], y[train], alpha = 0)
 ridge_pred <- predict(ridge_mod, s = 4, newx = x[test, ])
 mean((ridge_pred - y_test) ^ 2)
 
-# The test MSE is 16.2917. If we had simply fit a model with just an intercept,
-# we would have observed wach test observation using the mean of the training
+# The test MSE is 17.4224. If we had simply fit a model with just an intercept,
+# we would have observed each test observation using the mean of the training
 # observations. In that case, we could compute the test set MSE like this:
 mean((mean(y[train]) - y_test) ^ 2)
 
