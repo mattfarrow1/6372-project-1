@@ -136,7 +136,7 @@ tibble(variable = names(colSums(is.na(df_clean))),
 Drop all rows where life expectancy is `NA`. We will limit scope of our analysis to not include these countries.
 
 ```{r}
-#Check which countries have NA rows for life expectancy
+# Check which countries have NA rows for life expectancy
 df_clean$country[which(is.na(df_clean$life_expectancy))]
 
 # Drop all rows where life expectancy is NA
@@ -151,7 +151,7 @@ tibble(variable = names(colSums(is.na(df_clean))),
 
 We have now excluded these countries from our scope: Cook Islands, Dominica, Marshall Islands, Monaco, Nauru, Niue, Palau, Saint Kitts and Nevis, San Marino, and Tuvalu.
 
-Investigating the remaining `NA`'s - Hepatitis B is now our variable with the most `NA`'s at 553. Let's see if there is either a year or a country that has the majority of the `NA`'s.
+Hepatitis B is now our variable with the most `NA`'s at 553. Let's see if there is either a year or a country that has the majority of the `NA`'s.
 
 ```{r echo=FALSE, warning=FALSE}
 # Look at how many missing hepatitis measurements there are by country
@@ -163,14 +163,9 @@ df_clean %>%
   rename(missing = n) %>% 
   arrange(desc(missing))
 
-# #Matt - how can I group by/summarize to just a two column table with country in one column and NA count in the other?
-# df_clean$country[which(is.na(df_clean$hepatitis_b))]
-# df_clean$year[which(is.na(df_clean$hepatitis_b))]
-
 #Visualize the relationship to see if it looks significant
 df_clean %>% 
   ggplot(aes(x = hepatitis_b, y = life_expectancy)) +
-  # geom_point() +
   geom_jitter(alpha = 0.3) +
   geom_smooth() +
   labs(title = "Hepatitis B vs. Life Expectancy",
@@ -181,8 +176,12 @@ df_clean %>%
 Our options are to either drop all of the `NA`'s, impute the values, or fill with `0`'s. For our interpretable model, let's drop the `NA`'s and we will revisit them for our predictive model.
 
 ```{r echo=FALSE}
+# Drop hepatitis B variable 
+df_interp <- df_clean %>% 
+  select(-hepatitis_b)
+
 # Drop remaining rows with NA's for the interpretable model
-df_interp <- na.omit(df_clean)
+df_interp <- na.omit(df_interp)
 
 # Final check of missing values
 tibble(variable = names(colSums(is.na(df_interp))),
@@ -198,7 +197,7 @@ Now that we've subsetted our variables and dealt with `NA`'s, let's look at how 
 df_interp %>% count(year)
 ```
 
-Our feature engineering dropped a number of records from 2000 and 2001, and almost all of the records from 2015. Let's go with the most recent "good" sample size (2011-2014) and again limit scope to these years only.
+Our feature engineering dropped almost all of the records from 2015. Let's go with the most recent "good" sample size (2011-2014) and again limit scope to these years only.
 
 ```{r}
 df_interp <- df_interp %>% filter(year %in% 2011:2014)
@@ -212,7 +211,7 @@ Now that we've finished our feature engineering, let's start building our interp
 # Set the maximum number of variables to consider in the model. Although the
 # model can handle up to 20, the more we add, the less interpretable the final
 # model will be.
-consider <- 18
+consider <- 17
 
 # Fit the model. We'll remove country, but keep it in the data set for
 # interpretation.
@@ -248,7 +247,7 @@ plot(reg_summary$adjr2,
 which.max(reg_summary$adjr2)
 points(
   11,
-  reg_summary$adjr2[11],
+  reg_summary$adjr2[which.max(reg_summary$adjr2)],
   col = "red",
   cex = 2,
   pch = 20
@@ -257,8 +256,9 @@ plot(reg_summary$cp,
      xlab = "Number of Variables",
      ylab = "Cp",
      type = "l")
+which.min(reg_summary$cp)
 points(
-  10,
+  9,
   reg_summary$cp[which.min(reg_summary$cp)],
   col = "red",
   cex = 2,
@@ -268,6 +268,7 @@ plot(reg_summary$bic,
      xlab = "Number of Variables",
      ylab = "BIC",
      type = "l")
+which.min(reg_summary$bic)
 points(
   5,
   reg_summary$bic[which.min(reg_summary$bic)],
@@ -297,19 +298,34 @@ coef(regfit_full, 5)
 ```{r echo=FALSE}
 # Forward
 regfit_fwd <-
-  regsubsets(life_expectancy ~ ., data = df_interp[, -1], method = "forward")
-# summary(regfit_fwd)
+  regsubsets(
+    life_expectancy ~ .,
+    data = df_interp[,-1],
+    nvmax = 17,
+    method = "forward"
+  )
+summary(regfit_fwd)
 
 # Backward
 regfit_bwd <-
-  regsubsets(life_expectancy ~ ., data = df_interp[, -1], method = "backward")
-# summary(regfit_bwd)
+  regsubsets(
+    life_expectancy ~ .,
+    data = df_interp[,-1],
+    nvmax = 17,
+    method = "backward"
+  )
+summary(regfit_bwd)
+
+# How many variables do we want to use?
+x <- 4
 
 # Compare coefficients
-tibble(variables = names(coef(regfit_full, 5)),
-       full = round(coef(regfit_full, 5), 4),
-       fwd = round(coef(regfit_fwd, 5), 4),
-       bwd = round(coef(regfit_bwd, 5), 4)) %>% 
+tibble(
+  variables = names(coef(regfit_full, x)),
+  full = round(coef(regfit_full, x), 4),
+  fwd = round(coef(regfit_fwd, x), 4),
+  bwd = round(coef(regfit_bwd, x), 4)
+) %>%
   gt()
 ```
 
@@ -329,7 +345,7 @@ test_mat <- model.matrix(life_expectancy ~ ., data = df_interp[test, -1])
 # Run a loop, and for each size `i`, extract the coefficients from `regfit_best`
 # for the best model of that size, multiply them into the appropriate columns of
 # the test model matric to form the predictions, and compute the test MSE.
-val_errors <- rep(NA, consider)
+val_errors <- rep(NA, 8)
 for (i in 1:8) {
   coefi <- coef(regfit_best, id = i)
   pred <- test_mat[, names(coefi)] %*% coefi
@@ -377,7 +393,7 @@ predict.regsubsets <- function(object, newdata, id, ...) {
 for (j in 1:k) {
   best_fit <-
     regsubsets(life_expectancy ~ ., data = df_interp[folds != j, -1], nvmax = consider)
-  for (i in 1:16) {
+  for (i in 1:15) {
     pred <- predict(best_fit, df_interp[folds == j, -1], id = i)
     cv_errors[j, i] <-
       mean((df_interp$life_expectancy[folds == j] - pred) ^ 2)
@@ -400,7 +416,7 @@ coef(reg_best, 4)  # the number sets the number of variables we want
 
 ### Build the Final Model
 
-```{r echo=FALSE}
+```{r}
 # Build the final model using the best subset selection results
 final_model <-
   lm(
@@ -412,7 +428,11 @@ final_model <-
 )
 
 # Final model summary
-summary(final_model)
+final_model_summary <- summary(final_model)
+
+# Get MSE
+mean(final_model_summary$residuals ^ 2)
+
 ```
 
 ### Work on ASE
@@ -660,31 +680,6 @@ mean((lasso_pred - y_test) ^ 2)
 out <- glmnet(x, y, alpha = 1)
 lasso_coef <- predict(out, type = "coefficients", s = bestlambda)[1:14,]
 lasso_coef[lasso_coef != 0]
-```
-
-```{r eval=FALSE}
-#### NEED TO UPDATE BELOW HERE
-xtest <- model.matrix(life_expectancy ~ ., df_predict)[, -1]
-ytest <- df_predict$life_expectancy
-
-grid <- 10^seq(10, -2, length = 100)
-lasso.mod <- glmnet(x, y, alpha = 1, lambda = grid)
-dim(coef(lasso.mod))
-
-# test and train split
-set.seed(1)
-train <- cv.out <- cv.glmnet(x, y, alpha = 1) # alpha=1 performs LASSO
-plot(cv.out)
-bestlambda <- cv.out$lambda.min # Optimal penalty parameter. You can make this call visually.
-bestlambda
-lasso.pred <- predict(lasso.mod, s = bestlambda, newx = xtest)
-
-testMSE_LASSO <- mean((ytest - lasso.pred)^2)
-testMSE_LASSO
-```
-
-```{r, eval=FALSE}
-coef(lasso.mod,s=bestlambda)
 ```
 
 ## KNN Model
