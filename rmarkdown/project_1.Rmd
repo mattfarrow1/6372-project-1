@@ -40,11 +40,7 @@ df_clean <- janitor::clean_names(df)
 glimpse(df_clean)
 ```
 
-<<<<<<< HEAD
 Looking at the data, there are 2,938 observations and 22 variables that cover various social, economic, and health-related factors.
-=======
-Looking at the data, there are 2,938 observations and 22 variables that cover various social, economic, and health-related factors. 
->>>>>>> 293635f89eb328f3179ced3316a6af9ad3a6aaf6
 
 ## Exploratory Data Analysis
 
