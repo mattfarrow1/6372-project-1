@@ -691,7 +691,7 @@ coef(lasso.mod,s=bestlambda)
 
 ## KNN Model
 
-For the KNN model, we will try to impute some values based on the distribution (either choosing the mean, median, or 0) and test how that impacts our metrics.
+For the KNN model, we will try to impute some values based on the distribution (either choosing the mean, median, or 0) and test how that impacts our metrics. To determine whether or not to impute, and what value to use, we reviewed the histograms of each variable with NA values to determine if we should impute the mean, median, or 0. Based on the histograms and distributions, we decided to impute the median for `hepatitis_ B_b`, `polio`, `total_expenditure`, and `diptheria`, the mean for `bmi`, `income_composition_of_resources`, and `schooling`, and 0 for `alcohol` and `thinness_5_9_years`.
 
 ```{r}
 # Copy the data
@@ -716,6 +716,11 @@ df_knn <- df_knn %>%
 # for (col in 4:ncol(df_knn)) {
 #     hist(df_knn[,col], main=names(df_knn[col]))
 # }
+
+#check for NA's
+tibble(variable = names(colSums(is.na(df_knn))),
+       missing = colSums(is.na(df_knn))) %>% 
+  gt()
 
 # Set seed
 set.seed(123)
@@ -807,6 +812,8 @@ plot(knnFit2, metric = "Rsquared", main = "knnFit2 Results (R-Squared)")
 plot(knnFit2, metric = "MAE", main = "knnFit2 Results (MAE)")
 ```
 
+Based on our training data set, we have surprisingly good results with the imputed data set and all of the predictors. Our RMSE is around 3 and our Rsquared is in the 90's. 
+
 ## Variable Selection for KNN
 
 Let's now test KNN using the same 4 predictors from our first linear model and compare our results with all of the predictors.
@@ -839,7 +846,9 @@ plot(knnFit3, metric = "MAE")
 ```
 
 ```{r}
-#here I would like to overlay the RMSE for each of these KNN fits for comparison
+ggplot(df, aes(x)) +                    # basic graphical object
+  geom_line(aes(y=y1), colour="red") +  # first layer
+  geom_line(aes(y=y2), colour="green")  # second layer
 
 ```
 
@@ -851,7 +860,7 @@ Let's run some tree models to see if we get better metrics that we think may be 
 
 ```{r}
 # Remove country because this tree function has a maximum of 32 levels
-tree1 <- tree(life_expectancy ~ ., data = df_knn[, -1])
+tree1 <- tree(life_expectancy ~ ., data = tree_train[, -1])
 summary(tree1)
 plot(tree1)
 
@@ -860,33 +869,40 @@ cv.tree1 <- cv.tree(tree1)
 plot(cv.tree1$size, cv.tree1$dev, type = 'b')
 
 # Check the predictions
-yhat = predict(tree1, newdata = df_knn[, -1])
-plot(yhat, df_knn$life_expectancy)
+yhat = predict(tree1, newdata = tree_test[, -1])
+plot(yhat, tree_test$life_expectancy)
 abline(0, 1)
-mean((yhat - df_knn$life_expectancy) ^ 2)
+mean((yhat - tree_test$life_expectancy) ^ 2)
 
 # Try a random forest compared to a single tree model
 set.seed(1)
 
 # Remove country again
-rfFit <- randomForest(life_expectancy ~ ., data = df_knn[, -1])
+rfFit <- randomForest(life_expectancy ~ ., data = tree_train[, -1])
 rfFit
 
 # Test using all predictors for each tree
 set.seed(1)
 
-# Have to remove country again
-rfFit2 <- randomForest(life_expectancy ~., data = df_knn[,-1], mtry = 17)
+# Have to remove country again - using top 4 predictors
+rfFit2 <- randomForest(life_expectancy ~ adult_mortality +
+      total_expenditure +
+      hiv_aids +
+      income_composition_of_resources, data = tree_train[,-1])
 rfFit2
 
 #compare y-hat for the two random forest models
-yhat.rf <- predict(rfFit, newdata = df_knn[, -1])
-yhat.rf2 <- predict(rfFit2, newdata = df_knn[, -1])
+yhat.rf <- predict(rfFit, newdata = tree_test[, -1])
+yhat.rf2 <- predict(rfFit2, newdata = tree_test[, -1])
 
-plot(yhat.rf, df_knn$life_expectancy)
+# Performance measurement
+postResample(tree_test$life_expectancy, yhat.rf)
+postResample(tree_test$life_expectancy, yhat.rf2)
+
+plot(yhat.rf, tree_test$life_expectancy)
 abline(0,1)
 
-plot(yhat.rf2,df_knn$life_expectancy)
+plot(yhat.rf2,tree_test$life_expectancy)
 abline(0,1)
 ```
 
