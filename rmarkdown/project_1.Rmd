@@ -698,7 +698,7 @@ df_knn <- df_clean
 # Impute the data set
 df_knn <- df_knn %>%
   mutate(across(
-    c(hepatitis_b, polio, total_expenditure, diphtheria),
+    c(polio, total_expenditure, diphtheria),
     ~ replace_na(., median(.x, na.rm = TRUE))
   )) %>% 
   mutate(across(
@@ -709,6 +709,10 @@ df_knn <- df_knn %>%
     c(alcohol, thinness_5_9_years),
     ~ replace_na(., 0)
   ))
+
+#remove hepatitis b to match above
+df_knn <- df_knn %>%
+  select(-hepatitis_b)
 
 # # Check the histograms to see if there any shifts after imputing
 # for (col in 4:ncol(df_knn)) {
