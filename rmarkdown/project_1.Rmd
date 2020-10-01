@@ -736,17 +736,9 @@ knn_train  <- df_knn_standard[inTraining, ]
 knn_test   <- df_knn_standard[-inTraining, ]
 ```
 
-Split the non-standardized data for trees
+
 
 ```{r}
-# Set seed
-set.seed(123)
-
-# Split training/test data sets
-inTraining <- createDataPartition(df_knn$life_expectancy, p = 0.75, list = FALSE)
-tree_train  <- df_knn[inTraining,]
-tree_test   <- df_knn[-inTraining,]
-
 # Set seed
 set.seed(567)
 
@@ -844,19 +836,113 @@ plot(knnFit3, metric = "MAE")
 ```
 
 ```{r}
-ggplot(df, aes(x)) +                    # basic graphical object
-  geom_line(aes(y=y1), colour="red") +  # first layer
-  geom_line(aes(y=y2), colour="green")  # second layer
+#visualize a plot of all MAE overlaid
+
+#ggplot(df, aes(x)) +                    # basic graphical object
+#  geom_line(aes(y=y1), colour="red") +  # first layer
+#  geom_line(aes(y=y2), colour="green")  # second layer
 
 ```
 
 We see that using all of the predictors and then comparing with just the four ones we deemed important from our first model (which was on a much more limited data set) gives us approximately the same adj R2 value and RMSE. When applying to our test data set, it does not appear that our models are over-fitting as we do not see a big shift in our metrics, even though an adj R2 in the 90's is normally a warning sign for an over-fitting model.
+
+## Check for Over Fit
+
+Let's create another train/test split for our KNN models to verify our metrics and confirm there is no over-fitting, as we are suspicious of the high Rsquared values which are typically indicative of overfit.
+
+```{r}
+# Split training/test data sets - round 2
+set.seed(1)
+inTraining_x <-
+  createDataPartition(df_knn_standard$life_expectancy,
+                      p = 0.75,
+                      list = FALSE)
+knn_train_x  <- df_knn_standard[inTraining_x, ]
+knn_test_x   <- df_knn_standard[-inTraining_x, ]
+
+# Run everything with the train control above
+knnFit_x <-
+  train(
+    life_expectancy ~ .,
+    data = knn_train_x,
+    method = "knn",
+    trControl = ctrl,
+    tuneLength = 10
+  )
+knnFit_x
+
+# Check the metrics on the test set
+Predictions_knnFit_x <- predict(knnFit_x, newdata = knn_test_x)
+
+# Performance measurement
+postResample(knn_test_x$life_expectancy, Predictions_knnFit_x)
+
+# Plotting
+plot(knnFit_x, main = "knnFit Results")  
+plot(knnFit_x, metric = "Rsquared", main = "knnFit Results (R-Squared)")
+plot(knnFit_x, metric = "MAE", main = "knnFit Results (MAE)")
+
+# Try another knn with a k value of less than 5
+knnFit2_x <-
+  train(
+    life_expectancy ~ .,
+    data = knn_train_x,
+    method = "knn",
+    trControl = ctrl,
+    tuneGrid = expand.grid(k = c(1, 3, 5))
+  )
+knnFit2_x
+
+# Check the metrics on the test set
+Predictions_knnFit2_x <- predict(knnFit2_x, newdata = knn_test_x)
+
+# Performance measurement
+postResample(knn_test_x$life_expectancy, Predictions_knnFit2_x)
+
+# Plotting
+plot(knnFit2_x, main = "knnFit2 Results")  
+plot(knnFit2_x, metric = "Rsquared", main = "knnFit2 Results (R-Squared)")
+plot(knnFit2_x, metric = "MAE", main = "knnFit2 Results (MAE)")
+
+knnFit3_x <-
+  train(
+    life_expectancy ~ adult_mortality +
+      total_expenditure +
+      hiv_aids +
+      income_composition_of_resources,
+    data = knn_train_x,
+    method = "knn",
+    trControl = ctrl,
+    tuneLength = 10
+  )
+knnFit3_x
+
+# Check the metrics on the test set
+Predictions_knnFit3_x <- predict(knnFit3_x, newdata = knn_test_x)
+
+# Performance measurement
+postResample(knn_test_x$life_expectancy, Predictions_knnFit3_x)
+
+# Plotting
+plot(knnFit3_x, main = "knnFit2 Results")  
+plot(knnFit3_x, metric = "Rsquared", main = "knnFit2 Results (R-Squared)")
+plot(knnFit3_x, metric = "MAE", main = "knnFit2 Results (MAE)")
+
+```
 
 ## Trees
 
 Let's run some tree models to see if we get better metrics that we think may be less susceptible to over-fitting.
 
 ```{r}
+# Set seed
+set.seed(123)
+
+# Split training/test data sets
+inTraining <- createDataPartition(df_knn$life_expectancy, p = 0.75, list = FALSE)
+tree_train  <- df_knn[inTraining,]
+tree_test   <- df_knn[-inTraining,]
+
 # Remove country because this tree function has a maximum of 32 levels
 tree1 <- tree(life_expectancy ~ ., data = tree_train[, -1])
 summary(tree1)
@@ -901,6 +987,51 @@ plot(yhat.rf, tree_test$life_expectancy)
 abline(0,1)
 
 plot(yhat.rf2,tree_test$life_expectancy)
+abline(0,1)
+```
+
+## Check for overfit
+
+Let's do another train/test split also for the random forest to check for overfitting, as the Rsquared values for RF are much higher than KNN.
+
+```{r}
+# Set seed
+set.seed(1)
+
+# Split training/test data sets
+inTraining_t <- createDataPartition(df_knn$life_expectancy, p = 0.75, list = FALSE)
+tree_train_x  <- df_knn[inTraining_t,]
+tree_test_x   <- df_knn[-inTraining_t,]
+
+# Try a random forest compared to a single tree model
+set.seed(567)
+
+# Remove country again
+rfFit_x <- randomForest(life_expectancy ~ ., data = tree_train_x[, -1])
+rfFit_x
+
+# Test using all predictors for each tree
+set.seed(5)
+
+# Have to remove country again - using top 4 predictors
+rfFit2_x <- randomForest(life_expectancy ~ adult_mortality +
+      total_expenditure +
+      hiv_aids +
+      income_composition_of_resources, data = tree_train_x[,-1])
+rfFit2_x
+
+#compare y-hat for the two random forest models
+yhat.rf_x <- predict(rfFit_x, newdata = tree_test_x[, -1])
+yhat.rf2_x <- predict(rfFit2_x, newdata = tree_test_x[, -1])
+
+# Performance measurement
+postResample(tree_test_x$life_expectancy, yhat.rf_x)
+postResample(tree_test_x$life_expectancy, yhat.rf2_x)
+
+plot(yhat.rf_x, tree_test_x$life_expectancy)
+abline(0,1)
+
+plot(yhat.rf2_x,tree_test_x$life_expectancy)
 abline(0,1)
 ```
 
