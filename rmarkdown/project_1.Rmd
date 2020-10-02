@@ -1,7 +1,7 @@
 ---
 title: '6372: Project 1'
 author: "Megan Ball, Matt Farrow, Neddy Nyatome"
-output: html_document
+output: bookdown::html_document2
 ---
 
 ```{r setup, include=FALSE}
@@ -65,6 +65,8 @@ df_clean %>%
   theme_ipsum()
 ```
 
+As we might expect, life expectancy tends to skew towards the older side, but for the purposes of this project we won't worry about that. The Q-Q plot shows some slight deviations from normality towards the edges, but after trying various transformations we have decided to proceed with the original data.
+
 ```{r convert-to-factor, echo=FALSE}
 # Convert country and status to factors
 df_clean$country <- as_factor(df_clean$country)
@@ -72,6 +74,8 @@ df_clean$status  <- as_factor(df_clean$status)
 ```
 
 ### Check for Correlation
+
+We next moved into looking at correlation \@ref(fig:corr-1).
 
 ```{r message=FALSE, warning=FALSE, echo=FALSE}
 ggcorr(
@@ -83,6 +87,8 @@ ggcorr(
   cex = 3.5,
   hjust = 1
 )
+
+ggsave(here::here("images", "correlation 1.png"))
 ```
 
 We examined various correlation matrices to determine whether there were variable(s) that should be addressed. We'll start by removing redundant variables and picking ones with fewer `NA` values.
@@ -1115,6 +1121,11 @@ Final conclusions from the analyses of Objective 1's interpretable model and inc
 ## Appendix
 
 ### Figures
+
+```{r corr-1, fig.cap="Initial Variable Correlation", echo=FALSE}
+knitr::include_graphics(here::here("images", "correlation 1.png"))
+```
+
 
 ### R Code
 
