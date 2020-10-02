@@ -17,6 +17,7 @@ library(caret)
 library(tree)
 library(randomForest)
 library(plotmo)
+library(webshot)
 ```
 
 # Introduction
@@ -652,29 +653,6 @@ out <- glmnet(x, y, alpha = 0)
 predict(out, type = "coefficients", s = bestlambda)[1:14,]
 ```
 
-## Lasso
-
-```{r}
-# Fit the lasso model
-lasso_mod <- glmnet(x[train, ], y[train], alpha = 1)
-
-# Plot the lasso model
-plot(lasso_mod)
-
-# Run cross-validation and compute the associated test error
-set.seed(1)
-cv_out <- cv.glmnet(x[train, ], y[train], alpha = 1)
-plot(cv_out)
-bestlambda <- cv_out$lambda.min
-lasso_pred <- predict(lasso_mod, s = bestlambda, newx = x[test, ])
-mean((lasso_pred - y_test) ^ 2)
-
-# Compute lasso coefficients
-out <- glmnet(x, y, alpha = 1)
-lasso_coef <- predict(out, type = "coefficients", s = bestlambda)[1:14,]
-lasso_coef[lasso_coef != 0]
-```
-
 From ridge regression, we see the variables with the largest coefficients (in magnitude) are `statusDeveloped`, `income_composition_of_resources`, `schooling`, and `hiv_aids`. We will proceed with LASSO to determine another method of variable selection.
 
 ## Lasso
@@ -684,8 +662,6 @@ From ridge regression, we see the variables with the largest coefficients (in ma
 lasso_mod <- glmnet(x[train, ], y[train], alpha = 1)
 
 # Plot the lasso model
-plot(lasso_mod)
-
 plot_glmnet(lasso_mod)
 
 # Run cross-validation and compute the associated test error
@@ -703,17 +679,20 @@ lasso_coef <- predict(out, type = "coefficients", s = bestlambda)[1:14,]
 lasso_coef[lasso_coef != 0]
 ```
 
-LASSO variable selection does not help us reduce our variables down, as it indicates all variables are non-zero. Our ASE is comparable to ridge regression around 16.4, which is worse than our interpretable model (although our interpretable model is on a much smaller scale). Let's proceed with imputation instead or removal of the `NA`'s on our data set to see if that improves performance, as our primary goal is just prediction.
+LASSO variable selection does not help us reduce our variables down, as it indicates all variables are non-zero, but does highlight the same top 4 as ridge regression: `income_composition_of_resources`, `schooling`, `statusDeveloping` and `hiv_aids`. Our ASE is comparable to ridge regression around 16.4, which is worse than our interpretable model (although our interpretable model is on a much smaller scale). Let's proceed with imputation instead or removal of the `NA`'s on our data set to see if that improves performance, as our primary goal is just prediction.
 
 ## Impute Values
 
 ```{r}
 #plot distributions
+df_plot <- as.data.frame(df_clean)
+for (col in 5:ncol(df_plot)) {
+    hist(df_plot[,col], main=names(df_plot[col]))
+}
 
 # Copy the data
 df_predict2 <- df_clean %>% 
   select(-c(hepatitis_b))
-
 
 # Impute the data set
 df_predict2 <- df_predict2 %>%
@@ -797,11 +776,6 @@ predict(out2, type = "coefficients", s = bestlambda2)[1:14,]
 lasso_mod2 <- glmnet(x2[train2, ], y2[train2], alpha = 1)
 
 # Plot the lasso model
-plot(lasso_mod2)
-
-#install.packages("plotmo")
-library(plotmo)
-
 plot_glmnet(lasso_mod2)
 
 # Run cross-validation and compute the associated test error
@@ -819,7 +793,7 @@ lasso_coef2 <- predict(out2, type = "coefficients", s = bestlambda2)[1:14,]
 lasso_coef2[lasso_coef2 != 0]
 ```
 
-The top 3 variables using LASSO on the imputed data set are similar to the non-imputed data set: `statusDeveloped`, `schooling`, and `hiv_aids`
+The top 4 variables using LASSO on the imputed data set are similar to the non-imputed data set: `income_composition_of_resources`,`statusDeveloped`, `schooling`, and `hiv_aids`
 
 ```{r}
 # Fit the lasso model with data set including country
@@ -835,7 +809,7 @@ y_test3 <- y3[test3]
 lasso_mod3 <- glmnet(x3[train3, ], y3[train3], alpha = 1)
 
 # Plot the lasso model
-plot(lasso_mod3)
+plot_glmnet(lasso_mod3)
 
 # Run cross-validation and compute the associated test error
 set.seed(1)
@@ -852,7 +826,7 @@ lasso_coef3 <- predict(out3, type = "coefficients", s = bestlambda3)[1:14,]
 lasso_coef3[lasso_coef3 != 0]
 ```
 
-Based on these coefficients, it does appear that country is significant when predicting life expectancy. We removed it from our interpretable model as it would have been incredibly difficult to interpret a model with this many coefficients. However, since our goal is only prediction, let's include country in our final predictive model along with the top 3 variables from LASSO: `statusDeveloped`, `schooling`, and `hiv_aids`.
+Based on these coefficients, it does appear that country is significant when predicting life expectancy. We removed it from our interpretable model as it would have been incredibly difficult to interpret a model with this many coefficients. However, since our goal is only prediction, let's include country in our final predictive model along with the top 4 variables from LASSO: `income_composition_of_resources`, `statusDeveloped`, `schooling`, and `hiv_aids`.
 
 ```{r}
 #build a linear model using the top 3 variables from LASSO along with country for both imputed data set and removed NA data set
@@ -860,7 +834,9 @@ Based on these coefficients, it does appear that country is significant when pre
 # Build the final model using the best subset selection results on the imputed data set
 predict_model1 <-
   lm(
-    life_expectancy ~ country +
+    life_expectancy ~ 
+      country +
+      income_composition_of_resources +
       status +
       schooling +
       hiv_aids,
@@ -873,12 +849,14 @@ predict_model1_sum
 
 # Get MSE
 mean(predict_model1_sum$residuals ^ 2)
-#[1] 4.446233
+#[1] 4.39226
 
 # Build the final model using the best subset selection results on removed NA data set
 predict_model2 <-
   lm(
-    life_expectancy ~ country +
+    life_expectancy ~ 
+      country +
+      income_composition_of_resources +
       status +
       schooling +
       hiv_aids,
@@ -891,7 +869,7 @@ predict_model2_sum
 
 # Get MSE
 mean(predict_model2_sum$residuals ^ 2)
-#[1] 4.254968
+#[1] 4.189329
 ```
 
 Make determination for which model to use above (imputed versus remove NA - metrics are not that different). What else can we do to avoid overfit?
@@ -1287,43 +1265,6 @@ abline(0,1)
 plot(yhat.rf2_x,tree_test_x$life_expectancy)
 abline(0,1)
 ```
-
-## Objective 1
-
-### Restatement of Problem and the Overall Approach to Solve It
-
-### Model Selection
-
-#### Type of Selection
-
--   LASSO
--   RIDGE
--   ELASTIC NET
--   Stepwise
--   Forward
--   Backward
--   Manual / Intuition
--   A mix of all of the above
-
-#### Checking Assumptions
-
--   Residual Plots
--   Influential point analysis (Cook's D and Leverage)
-
-#### Compare Competing Models
-
-Via: Training and test set split or CV Possible Metrics: ASE (Required), AIC, BIC, adj R2, are all welcome additions
-
-#### Parameter Interpretation (Simple model only)
-
--   Interpretation
--   Confidence Intervals
-
-#### Additional Details on a more complicated regression model
-
-## Objective 2 Deliverable (see above)
-
-Final conclusions from the analyses of Objective 1's interpretable model and include comments on what model would be recommended if prediction was the only goal (comparing all models considered).
 
 # Appendix
 
