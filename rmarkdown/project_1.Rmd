@@ -19,14 +19,14 @@ library(randomForest)
 library(plotmo)
 ```
 
-## Introduction
+# Introduction
 
 Using the World Health Organization (WHO) data compiled by Kumar Rajarshi, Deeksha Russell, and Duan Wang, we developed three different models:
 - The first model was designed to be easily interpreted using linear regression.
 - The second model was designed to be used as a predictive tool using linear regression.
 - The third model was developed using non-parametric methods for prediction.
 
-## Data Description
+# Data Description
 
 The description and context of the Life Expectancy (WHO) data set can be found [here](https://www.kaggle.com/kumarajarshi/life-expectancy-who). Data has been compiled from several different data sets into a final data set that represents health factors for 193 countries between the years of 2000-2015.
 
@@ -43,11 +43,11 @@ glimpse(df_clean)
 
 Looking at the data, there are 2,938 observations and 22 variables that cover various social, economic, and health-related factors.
 
-## Exploratory Data Analysis
+# Exploratory Data Analysis {-}
 
 We'll start by taking a closer look at life expectancy.
 
-```{r echo=FALSE, message=FALSE}
+```{r eda, echo=FALSE, message=FALSE, warning=FALSE}
 df_clean %>% 
   ggplot(aes(life_expectancy)) +
   geom_histogram(fill = "steelblue", color = "black") +
@@ -74,11 +74,14 @@ df_clean$country <- as_factor(df_clean$country)
 df_clean$status  <- as_factor(df_clean$status)
 ```
 
-### Check for Correlation
+## Check for Correlation {-}
 
-We next moved into looking at correlation \@ref(fig:corr-1).
+We next moved into looking at correlation (Figure \@ref(fig:corr-1)). We began examining various correlation matrices to determine whether there were variable(s) that should be addressed, and started by removing redundant variables and picking ones with fewer `NA` values (Figure \@ref(fig:corr-2). 
 
-```{r message=FALSE, warning=FALSE, echo=FALSE}
+Finally, we looked at what happens when we also remove `population`, since it has minimal correlation to `life_expectancy` (Figure \@ref(fig:corr-3).
+
+```{r correlation, message=FALSE, warning=FALSE, echo=FALSE, fig.show='hide'}
+# Run correlations and save output as images to be used in the appendix.
 ggcorr(
   df_clean,
   label = TRUE,
@@ -90,11 +93,7 @@ ggcorr(
 )
 
 ggsave(here::here("images", "correlation 1.png"))
-```
 
-We examined various correlation matrices to determine whether there were variable(s) that should be addressed. We'll start by removing redundant variables and picking ones with fewer `NA` values.
-
-```{r message=FALSE, warning=FALSE, echo=FALSE}
 df_clean %>% 
   select(-c(under_five_deaths, gdp, thinness_1_19_years)) %>% 
   ggcorr(
@@ -105,11 +104,9 @@ df_clean %>%
   cex = 3.5,
   hjust = 1
 )
-```
 
-Let's now look at what happens when we also remove `population`, since it has minimal correlation to `life_expectancy`.
+ggsave(here::here("images", "correlation 2.png"))
 
-```{r message=FALSE, warning=FALSE, echo=FALSE}
 df_clean %>% 
   select(-c(under_five_deaths, gdp, thinness_1_19_years, population)) %>% 
   ggcorr(
@@ -120,29 +117,29 @@ df_clean %>%
   cex = 3.5,
   hjust = 1
 )
+
+ggsave(here::here("images", "correlation 3.png"))
 ```
 
 We'll proceed, dropping the columns we've looked at.
 
-```{r echo=FALSE}
+```{r}
 df_clean <- df_clean %>% 
   select(-c(under_five_deaths, gdp, thinness_1_19_years, population))
 ```
 
-### Deal with Missing Values
+## Deal with Missing Values {-}
 
-Check for missing values.
+Our next task was to address the missing values in the data set (Figure \@ref(fig:missing-1)). We dropped all rows where life expectancy is `NA`, and limited the scope of our analysis to not include these countries (Figure \@ref(fig:missing-2)).
 
-```{r echo=FALSE}
+```{r echo=FALSE, fig.show='hide'}
 # Check for missing values
 tibble(variable = names(colSums(is.na(df_clean))),
        missing = colSums(is.na(df_clean))) %>% 
-  gt()
-```
+  gt() %>% 
+  tab_header(title = "Missing Values in Data") %>% 
+  gtsave(here::here("images", "missing-1.png"))
 
-Drop all rows where life expectancy is `NA`. We will limit scope of our analysis to not include these countries.
-
-```{r}
 # Check which countries have NA rows for life expectancy
 df_clean$country[which(is.na(df_clean$life_expectancy))]
 
@@ -153,7 +150,9 @@ df_clean <- df_clean %>%
 # Recheck missing value counts
 tibble(variable = names(colSums(is.na(df_clean))),
        missing = colSums(is.na(df_clean))) %>% 
-  gt()
+  gt() %>% 
+  tab_header(title = "Missing Values in Data") %>% 
+  gtsave(here::here("images", "missing-2.png"))
 ```
 
 We have now excluded these countries from our scope: Cook Islands, Dominica, Marshall Islands, Monaco, Nauru, Niue, Palau, Saint Kitts and Nevis, San Marino, and Tuvalu.
@@ -169,8 +168,12 @@ df_clean %>%
   select(-missing) %>% 
   rename(missing = n) %>% 
   arrange(desc(missing))
+```
 
-#Visualize the relationship to see if it looks significant
+In looking at the relationship between Hepatitis B and Life Expectancy (Figure \@ref(fig:hep-life)), our options are to either drop all of the `NA`'s, impute the values, or fill with `0`'s. For our interpretable model, we made the decision to drop the `hepatitis_b` variable along with the remainder of the `NA`'s and we will revisit them for our predictive model (Figure \@ref(fig:missing-3)).
+
+```{r echo=FALSE, warning=FALSE, fig.show='hide'}
+# Visualize the relationship to see if it looks significant
 df_clean %>% 
   ggplot(aes(x = hepatitis_b, y = life_expectancy)) +
   geom_jitter(alpha = 0.3) +
@@ -178,11 +181,9 @@ df_clean %>%
   labs(title = "Hepatitis B vs. Life Expectancy",
        x = "Hepatitis B",
        y = "Life Expectancy")
-```
 
-Our options are to either drop all of the `NA`'s, impute the values, or fill with `0`'s. For our interpretable model, let's drop the `NA`'s and we will revisit them for our predictive model.
+ggsave(here::here("images", "hepatitis-lifeexp.png"))
 
-```{r echo=FALSE}
 # Drop hepatitis B variable 
 df_interp <- df_clean %>% 
   select(-hepatitis_b)
@@ -193,25 +194,20 @@ df_interp <- na.omit(df_interp)
 # Final check of missing values
 tibble(variable = names(colSums(is.na(df_interp))),
        missing = colSums(is.na(df_interp))) %>% 
-  gt()
+  gt() %>% 
+  gtsave(here::here("images", "missing-3.png"))
 ```
 
-### Analysis of Years
+## Analysis of Years {-}
 
-Now that we've subsetted our variables and dealt with `NA`'s, let's look at how many records we now have by year.
+Now that we've subsetted our variables and dealt with `NA`'s, we noticed that our feature engineering dropped almost all of the records from 2015. After a number of looks at the data, we decided to only use the most recent "good" sample size (2011-2014).
 
 ```{r echo=FALSE}
 df_interp %>% count(year)
-```
-
-Our feature engineering dropped almost all of the records from 2015. Let's go with the most recent "good" sample size (2011-2014) and again limit scope to these years only.
-
-```{r}
 df_interp <- df_interp %>% filter(year %in% 2011:2014)
-
 ```
 
-## Build the Model
+# Build the Model {-}
 
 Now that we've finished our feature engineering, let's start building our interpretable model.
 
@@ -240,7 +236,7 @@ names(reg_summary)
 reg_summary$rsq
 ```
 
-### Plot the RSS, adjusted $R^2$, $C_p$, and BIC for all Models
+## Plot the RSS, adjusted $R^2$, $C_p$, and BIC for all Models {-}
 
 ```{r echo=FALSE}
 par(mfrow = c(2, 2))
@@ -252,7 +248,7 @@ plot(reg_summary$adjr2,
      xlab = "Number of Variables",
      ylab = "Adjusted RSq",
      type = "l")
-which.max(reg_summary$adjr2)
+# which.max(reg_summary$adjr2)
 points(
   11,
   reg_summary$adjr2[which.max(reg_summary$adjr2)],
@@ -264,7 +260,7 @@ plot(reg_summary$cp,
      xlab = "Number of Variables",
      ylab = "Cp",
      type = "l")
-which.min(reg_summary$cp)
+# which.min(reg_summary$cp)
 points(
   9,
   reg_summary$cp[which.min(reg_summary$cp)],
@@ -276,7 +272,7 @@ plot(reg_summary$bic,
      xlab = "Number of Variables",
      ylab = "BIC",
      type = "l")
-which.min(reg_summary$bic)
+# which.min(reg_summary$bic)
 points(
   5,
   reg_summary$bic[which.min(reg_summary$bic)],
@@ -301,7 +297,9 @@ The model with the lowest BIC is the five-variable model that contains `adult_mo
 coef(regfit_full, 5)
 ```
 
-### Run Forward and Backward Stepwise Selection
+## Run Forward and Backward Stepwise Selection {-}
+
+The coefficients of the full, forward, and backward models all returned the same coefficients.
 
 ```{r echo=FALSE}
 # Forward
@@ -312,7 +310,7 @@ regfit_fwd <-
     nvmax = 17,
     method = "forward"
   )
-summary(regfit_fwd)
+# summary(regfit_fwd)
 
 # Backward
 regfit_bwd <-
@@ -322,7 +320,7 @@ regfit_bwd <-
     nvmax = 17,
     method = "backward"
   )
-summary(regfit_bwd)
+# summary(regfit_bwd)
 
 # How many variables do we want to use?
 x <- 4
@@ -337,7 +335,7 @@ tibble(
   gt()
 ```
 
-### Choose Using Validation Set
+## Choose Using Validation Set {-}
 
 ```{r warning=FALSE, echo=FALSE}
 # Set seed
@@ -382,7 +380,7 @@ regfit_best <- regsubsets(life_expectancy ~ ., data = df_interp[,-1])
 coef(regfit_best, which.min(val_errors))
 ```
 
-### Choose Using Cross-Validation
+## Choose Using Cross-Validation {-}
 
 ```{r echo=FALSE}
 k <- 10
@@ -422,9 +420,9 @@ reg_best <- regsubsets(life_expectancy ~ ., data = df_interp[, -1])
 coef(reg_best, 4)  # the number sets the number of variables we want
 ```
 
-### Build the Final Model
+## Build and Inspect the Final Model {-}
 
-```{r}
+```{r echo=FALSE}
 # Build the final model using the best subset selection results
 final_model <-
   lm(
@@ -436,24 +434,18 @@ final_model <-
 )
 ```
 
-### Inspect Model and get MSE
-
-```{r}
+```{r echo=FALSE}
 # Final model summary
 final_model_summary <- summary(final_model)
 final_model_summary
-
-# Get MSE
-mean(final_model_summary$residuals ^ 2)
-
-# Augment model
-final_model_aug <- broom::augment(final_model)
 
 # Confidence intervals
 confint(final_model)
 ```
 
-### Check Diagnostics
+The MSE for our model is `mean(final_model_summary$residuals ^ 2)`
+
+## Check Diagnostics {-}
 
 ```{r echo=FALSE}
 par(mfrow = c(1, 1))
@@ -469,7 +461,7 @@ par(mfrow=c(2,2))
 plot(final_model)
 ```
 
-### Fit our Model to our Data Set
+## Fit our Model to our Data Set {-}
 
 ```{r echo=FALSE}
 par(mfrow = c(1, 2))
@@ -484,17 +476,17 @@ plot(df_interp$life_expectancy,
      ylab = "Residuals")
 ```
 
-$Life~Expectancy = 47.106 - 0.013(Adult~Mortality) + 0.289(Total~Expenditure) - 0.911(HIV/AIDS) + 36.649(Income~Composition~of~Resources)$
+## Interpretation of Regression Coefficients {-}
 
-### Interpretation of Regression Coefficients
+$Life~Expectancy = 47.106 - 0.013(Adult~Mortality) + 0.289(Total~Expenditure) - 0.911(HIV/AIDS) + 36.649(Income~Composition~of~Resources)$
 
 We are 95% confident that the model's intercept is between (45.41, 48.689) and the true regression coefficient's for the predicted variables are: adult mortality (-0.016, -0.01), total expenditure (0.183, 0.359), HIV/AIDS (-1.062, -0.772), and income composition of resources (34.999, 38.894).
 
-## Linear Prediction Model
+# Linear Prediction Model
 
 Let's start again with the `df_clean` data set to perform feature engineering. We have already removed at this point variables that are highly correlated and rows/countries with `NA` for life expectancy. This leaves us with 17 other potential predictors and still quite a few `NA` values. We know we cannot have `NA` values to perform Ridge Regression or LASSO so need to either remove them, impute them, or change them to 0.
 
-### Deal with missing values
+## Deal with Missing Values {-}
 
 ```{r echo=FALSE}
 # Check for missing values
@@ -509,7 +501,7 @@ Let's start by checking the relationships of each variable with \> 100 `NA`'s to
 #Visualize the relationship to see if it looks significant (plot again)
 
 # hepatitis b
-df_clean %>% 
+df_clean %>%
   ggplot(aes(x = hepatitis_b, y = life_expectancy)) +
   geom_jitter(alpha = 0.3) +
   geom_smooth() +
@@ -519,7 +511,7 @@ df_clean %>%
   theme_ipsum()
 
 # total expenditure
-df_clean %>% 
+df_clean %>%
   ggplot(aes(x = total_expenditure, y = life_expectancy)) +
   geom_jitter(alpha = 0.3) +
   geom_smooth() +
@@ -539,7 +531,7 @@ df_clean %>%
   theme_ipsum()
 
 # income composition of resources
-df_clean %>% 
+df_clean %>%
   ggplot(aes(x = income_composition_of_resources, y = life_expectancy)) +
   geom_jitter(alpha = 0.3) +
   geom_smooth() +
@@ -549,7 +541,7 @@ df_clean %>%
   theme_ipsum()
 
 # schooling
-df_clean %>% 
+df_clean %>%
   ggplot(aes(x = schooling, y = life_expectancy)) +
   geom_jitter(alpha = 0.3) +
   geom_smooth() +
@@ -1333,16 +1325,39 @@ Via: Training and test set split or CV Possible Metrics: ASE (Required), AIC, BI
 
 Final conclusions from the analyses of Objective 1's interpretable model and include comments on what model would be recommended if prediction was the only goal (comparing all models considered).
 
-## Appendix
+# Appendix
 
-### Figures
+## Figures {-}
 
-```{r corr-1, fig.cap="Initial Variable Correlation", echo=FALSE}
+```{r corr-1, fig.cap="Variable Correlation, Original", echo=FALSE}
 knitr::include_graphics(here::here("images", "correlation 1.png"))
 ```
 
+```{r corr-2, fig.cap="Variable Correlation, 1st Iteration", echo=FALSE}
+knitr::include_graphics(here::here("images", "correlation 2.png"))
+```
 
-### R Code
+```{r corr-3, fig.cap="Variable Correlation, 2nd Iteration", echo=FALSE}
+knitr::include_graphics(here::here("images", "correlation 3.png"))
+```
+
+```{r missing-1, fig.cap="Missing Values Analysis, pt. 1", echo=FALSE}
+knitr::include_graphics(here::here("images", "missing-1.png"))
+```
+
+```{r missing-2, fig.cap="Missing Values Analysis, pt. 2", echo=FALSE}
+knitr::include_graphics(here::here("images", "missing-2.png"))
+```
+
+```{r hep-life, fig.cap="Relationship between Hepatitis B and Life Expectancy", echo=FALSE}
+knitr::include_graphics(here::here("images", "hepatitis-lifeexp.png"))
+```
+
+```{r missing-3, fig.cap="Missing Values Analysis, pt. 3", echo=FALSE}
+knitr::include_graphics(here::here("images", "missing-3.png"))
+```
+
+## R Code {-}
 
 ```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
 
