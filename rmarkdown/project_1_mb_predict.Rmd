@@ -1,0 +1,1328 @@
+---
+title: '6372: Project 1'
+author: "Megan Ball, Matt Farrow, Neddy Nyatome"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(corrplot)
+library(GGally)
+library(gt)
+library(hrbrthemes)
+library(car)
+library(leaps)
+library(caret)
+library(tree)
+library(randomForest)
+```
+
+### Megan's adds for predictive model start line 499 ###
+
+## Introduction
+
+Using the World Health Organization (WHO) data compiled by Kumar Rajarshi, Deeksha Russell, and Duan Wang, we developed three different models:
+- The first model was designed to be easily intepreted using linear regression
+- The second model was designed to be used as a predictive tool using linear regression
+- The third model was developed using non-parametric methods for prediction
+
+## Data Description
+
+Description and context of the Life Expectancy (WHO) data set can be found [here](https://www.kaggle.com/kumarajarshi/life-expectancy-who). Data has been compiled from several different data sets into a final data set that represents health factors for 193 countries between the years of 2000-2015.
+
+```{r load-data, echo=FALSE, message=FALSE}
+# Load data
+df <- read_csv(here::here("data - raw", "Life Expectancy Data.csv"))
+
+# Clean up column names
+df_clean <- janitor::clean_names(df)
+
+# Look at the data
+glimpse(df_clean)
+```
+
+Looking at the data, there are 2,938 observations and 22 variables that cover various social, economic, and health-related factors.
+
+## Exploratory Data Analysis
+
+We'll start by taking a closer look at life expectancy.
+
+```{r echo=FALSE, message=FALSE}
+df_clean %>% 
+  ggplot(aes(life_expectancy)) +
+  geom_histogram(fill = "steelblue", color = "black") +
+  labs(title = "Histogram of Life Expectancy",
+       x = "Age",
+       y = "Count") +
+  theme_ipsum()
+
+df_clean %>% 
+  ggplot(aes(sample = life_expectancy)) +
+  geom_qq(pch = 21, size = 3, na.rm = TRUE) +
+  geom_qq_line(color = "indianred", na.rm = TRUE) +
+  labs(title = "Quantile-Quantile Plot of Life Expectancy",
+       x = "Theoretical",
+       y = "Sample") +
+  theme_ipsum()
+```
+
+```{r convert-to-factor, echo=FALSE}
+# Convert country and status to factors
+df_clean$country <- as_factor(df_clean$country)
+df_clean$status  <- as_factor(df_clean$status)
+```
+
+### Check for Correlation
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+ggcorr(
+  df_clean,
+  label = TRUE,
+  label_alpha = TRUE,
+  label_size = 3,
+  layout.exp = 2,
+  cex = 3.5,
+  hjust = 1
+)
+```
+
+We examined various correlation matrices to determine whether there were variable(s) that should be addressed. We'll start by removing redundant variables and picking ones with fewer `NA` values.
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+df_clean %>% 
+  select(-c(under_five_deaths, gdp, thinness_1_19_years)) %>% 
+  ggcorr(
+  label = TRUE,
+  label_alpha = TRUE,
+  label_size = 3,
+  layout.exp = 2,
+  cex = 3.5,
+  hjust = 1
+)
+```
+
+Let's now look at what happens when we also remove `population`, since it has minimal correlation to `life_expectancy`.
+
+```{r message=FALSE, warning=FALSE, echo=FALSE}
+df_clean %>% 
+  select(-c(under_five_deaths, gdp, thinness_1_19_years, population)) %>% 
+  ggcorr(
+  label = TRUE,
+  label_alpha = TRUE,
+  label_size = 3,
+  layout.exp = 2,
+  cex = 3.5,
+  hjust = 1
+)
+```
+
+We'll proceed, dropping the columns we've looked at.
+
+```{r echo=FALSE}
+df_clean <- df_clean %>% 
+  select(-c(under_five_deaths, gdp, thinness_1_19_years, population))
+```
+
+### Deal with Missing Values
+
+Check for missing values.
+
+```{r echo=FALSE}
+# Check for missing values
+tibble(variable = names(colSums(is.na(df_clean))),
+       missing = colSums(is.na(df_clean))) %>% 
+  gt()
+```
+
+Drop all rows where life expectancy is `NA`. We will limit scope of our analysis to not include these countries.
+
+```{r}
+# Check which countries have NA rows for life expectancy
+df_clean$country[which(is.na(df_clean$life_expectancy))]
+
+# Drop all rows where life expectancy is NA
+df_clean <- df_clean %>% 
+  filter(!is.na(life_expectancy))
+
+# Recheck missing value counts
+tibble(variable = names(colSums(is.na(df_clean))),
+       missing = colSums(is.na(df_clean))) %>% 
+  gt()
+```
+
+We have now excluded these countries from our scope: Cook Islands, Dominica, Marshall Islands, Monaco, Nauru, Niue, Palau, Saint Kitts and Nevis, San Marino, and Tuvalu.
+
+Hepatitis B is now our variable with the most `NA`'s at 553. Let's see if there is either a year or a country that has the majority of the `NA`'s.
+
+```{r echo=FALSE, warning=FALSE}
+# Look at how many missing hepatitis measurements there are by country
+df_clean %>% 
+  group_by(country) %>% 
+  count(missing = is.na(hepatitis_b)) %>% 
+  filter(missing == TRUE) %>% 
+  select(-missing) %>% 
+  rename(missing = n) %>% 
+  arrange(desc(missing))
+
+#Visualize the relationship to see if it looks significant
+df_clean %>% 
+  ggplot(aes(x = hepatitis_b, y = life_expectancy)) +
+  geom_jitter(alpha = 0.3) +
+  geom_smooth() +
+  labs(title = "Hepatitis B vs. Life Expectancy",
+       x = "Hepatitis B",
+       y = "Life Expectancy")
+```
+
+Our options are to either drop all of the `NA`'s, impute the values, or fill with `0`'s. For our interpretable model, let's drop the `NA`'s and we will revisit them for our predictive model.
+
+```{r echo=FALSE}
+# Drop hepatitis B variable 
+df_interp <- df_clean %>% 
+  select(-hepatitis_b)
+
+# Drop remaining rows with NA's for the interpretable model
+df_interp <- na.omit(df_interp)
+
+# Final check of missing values
+tibble(variable = names(colSums(is.na(df_interp))),
+       missing = colSums(is.na(df_interp))) %>% 
+  gt()
+```
+
+### Analysis of Years
+
+Now that we've subsetted our variables and dealt with `NA`'s, let's look at how many records we now have by year.
+
+```{r echo=FALSE}
+df_interp %>% count(year)
+```
+
+Our feature engineering dropped almost all of the records from 2015. Let's go with the most recent "good" sample size (2011-2014) and again limit scope to these years only.
+
+```{r}
+df_interp <- df_interp %>% filter(year %in% 2011:2014)
+
+```
+
+## Build the Model
+
+Now that we've finished our feature engineering, let's start building our interpretable model.
+
+```{r echo=FALSE}
+# Set the maximum number of variables to consider in the model. Although the
+# model can handle up to 20, the more we add, the less interpretable the final
+# model will be.
+consider <- 17
+
+# Fit the model. We'll remove country, but keep it in the data set for
+# interpretation.
+regfit_full <-
+  regsubsets(life_expectancy ~ .,
+             df_interp[, -1],
+             nvmax = consider)
+
+# Store the regression summary
+reg_summary <- summary(regfit_full)
+```
+
+```{r}
+# Look at the names of reg_summary
+names(reg_summary)
+
+# What are the R-squared values?
+reg_summary$rsq
+```
+
+### Plot the RSS, adjusted $R^2$, $C_p$, and BIC for all Models
+
+```{r echo=FALSE}
+par(mfrow = c(2, 2))
+plot(reg_summary$rss,
+     xlab = "Number of Variables",
+     ylab = "RSS",
+     type = "l")
+plot(reg_summary$adjr2,
+     xlab = "Number of Variables",
+     ylab = "Adjusted RSq",
+     type = "l")
+which.max(reg_summary$adjr2)
+points(
+  11,
+  reg_summary$adjr2[which.max(reg_summary$adjr2)],
+  col = "red",
+  cex = 2,
+  pch = 20
+)
+plot(reg_summary$cp,
+     xlab = "Number of Variables",
+     ylab = "Cp",
+     type = "l")
+which.min(reg_summary$cp)
+points(
+  9,
+  reg_summary$cp[which.min(reg_summary$cp)],
+  col = "red",
+  cex = 2,
+  pch = 20
+)
+plot(reg_summary$bic,
+     xlab = "Number of Variables",
+     ylab = "BIC",
+     type = "l")
+which.min(reg_summary$bic)
+points(
+  5,
+  reg_summary$bic[which.min(reg_summary$bic)],
+  col = "red",
+  cex = 2,
+  pch = 20
+)
+```
+
+Now we'll look at the selected variables for the best model with a given number of predictors.
+
+```{r echo=FALSE}
+plot(regfit_full, scale = "r2")
+plot(regfit_full, scale = "adjr2")
+plot(regfit_full, scale = "Cp")
+plot(regfit_full, scale = "bic")
+```
+
+The model with the lowest BIC is the five-variable model that contains `adult_mortality`, `percentage_expenditure`, `total_expenditure`, `hiv_aids`, and `income_composition_of_resources`. We can use the `coef()` function to see the coefficient estimates associated with this model.
+
+```{r echo=FALSE}
+coef(regfit_full, 5)
+```
+
+### Run Forward and Backward Stepwise Selection
+
+```{r echo=FALSE}
+# Forward
+regfit_fwd <-
+  regsubsets(
+    life_expectancy ~ .,
+    data = df_interp[,-1],
+    nvmax = 17,
+    method = "forward"
+  )
+summary(regfit_fwd)
+
+# Backward
+regfit_bwd <-
+  regsubsets(
+    life_expectancy ~ .,
+    data = df_interp[,-1],
+    nvmax = 17,
+    method = "backward"
+  )
+summary(regfit_bwd)
+
+# How many variables do we want to use?
+x <- 4
+
+# Compare coefficients
+tibble(
+  variables = names(coef(regfit_full, x)),
+  full = round(coef(regfit_full, x), 4),
+  fwd = round(coef(regfit_fwd, x), 4),
+  bwd = round(coef(regfit_bwd, x), 4)
+) %>%
+  gt()
+```
+
+### Choose Using Validation Set
+
+```{r warning=FALSE, echo=FALSE}
+# Set seed
+set.seed(123)
+
+# Build test and training data sets, dropping country from regfit_best &
+# test_mat because I was getting a warning that 1 linear dependencies found
+train <- sample(c(TRUE, FALSE), nrow(df_interp), rep = TRUE)
+test <- (!train)
+regfit_best <- regsubsets(life_expectancy ~ ., data = df_interp[train, -1])
+test_mat <- model.matrix(life_expectancy ~ ., data = df_interp[test, -1])
+
+# Run a loop, and for each size `i`, extract the coefficients from `regfit_best`
+# for the best model of that size, multiply them into the appropriate columns of
+# the test model matric to form the predictions, and compute the test MSE.
+val_errors <- rep(NA, 8)
+for (i in 1:8) {
+  coefi <- coef(regfit_best, id = i)
+  pred <- test_mat[, names(coefi)] %*% coefi
+  val_errors[i] <- mean((df_interp$life_expectancy[test] - pred)^2)
+}
+```
+
+```{r}
+# Find the best model
+val_errors
+coef(regfit_best, which.min(val_errors))
+```
+
+```{r echo=FALSE}
+# Write a prediction function
+predict_regsubsets <- function(object, newdata, id, ...) {
+  form <- as.formula(object$call[[2]])
+  mat <- model.matrix(form, newdata)
+  coefi <- coef(object, id = id)
+  xvars <- names(coefi)
+  mat[, xvars] %*% coefi
+}
+
+# Perform best subset selection on the full data set, and select the best model.
+regfit_best <- regsubsets(life_expectancy ~ ., data = df_interp[,-1])
+coef(regfit_best, which.min(val_errors))
+```
+
+### Choose Using Cross-Validation
+
+```{r echo=FALSE}
+k <- 10
+set.seed(123)
+folds <- sample(1:k, nrow(df_interp), replace = TRUE)
+cv_errors <- matrix(NA, k, consider, dimnames = list(NULL, paste(1:consider)))
+
+predict.regsubsets <- function(object, newdata, id, ...) {
+  form <- as.formula(object$call[[2]])
+  mat <- model.matrix(form, newdata)
+  coefi <- coef(object, id = id)
+  mat[, names(coefi)] %*% coefi
+}
+
+# Perform cross-validation
+for (j in 1:k) {
+  best_fit <-
+    regsubsets(life_expectancy ~ ., data = df_interp[folds != j, -1], nvmax = consider)
+  for (i in 1:15) {
+    pred <- predict(best_fit, df_interp[folds == j, -1], id = i)
+    cv_errors[j, i] <-
+      mean((df_interp$life_expectancy[folds == j] - pred) ^ 2)
+  }
+}
+
+# Use the apply function to average over the columns of the matrix in order to
+# obtain a vector for which the jth element is the cross-validation error for
+# the j-variable model.
+mean_cv_errors <- apply(cv_errors, 2, mean)
+mean_cv_errors
+par(mfrow = c(1, 1))
+plot(mean_cv_errors, type = "b")
+
+# Perform best subset selection on the full data set in order to obtain the
+# variables for the final model
+reg_best <- regsubsets(life_expectancy ~ ., data = df_interp[, -1])
+coef(reg_best, 4)  # the number sets the number of variables we want
+```
+
+### Build the Final Model
+
+```{r}
+# Build the final model using the best subset selection results
+final_model <-
+  lm(
+    life_expectancy ~ adult_mortality +
+      total_expenditure +
+      hiv_aids +
+      income_composition_of_resources,
+    data = df_interp
+)
+
+# Final model summary
+final_model_summary <- summary(final_model)
+
+# Get MSE
+mean(final_model_summary$residuals ^ 2)
+
+```
+
+### Work on ASE
+
+```{r eval=FALSE}
+###############
+# WORK ON ASE
+testASE_b <- c()
+for (i in 1:16) {
+  predictions <-
+    predict.regsubsets(object = regfit_bwd_2,
+                       newdata = test,
+                       id = i)
+  testASE[i] <- mean((test$life_expectancy - predictions) ^ 2)
+}
+par(mfrow = c(1, 1))
+plot(1:16,
+     testASE,
+     type = "l",
+     xlab = "# of predictors",
+     ylab = "test vs train ASE")
+index <- which(testASE == min(testASE))
+points(index, testASE[index], col = "red", pch = 10)
+rss <- summary(regfit_bwd_2)$rss
+lines(1:16, rss / 518, lty = 3, col = "blue") # Dividing by n since ASE=RSS/sample size
+```
+
+### Check Diagnostics
+
+```{r echo=FALSE}
+par(mfrow = c(1, 1))
+plot(
+  final_model$fitted.values,
+  df_interp$life_expectancy,
+  xlab = "Predicted",
+  ylab = "Life Expectancy"
+)
+lines(c(0, 90), c(0, 90), col = "red")
+
+par(mfrow=c(2,2))
+plot(final_model)
+```
+
+### Fit our Model to our Data Set
+
+```{r echo=FALSE}
+par(mfrow = c(1, 2))
+test.model <- lm(life_expectancy ~ ., df_interp[, -1])
+plot(test.model$fitted.values,
+     test.model$residuals,
+     xlab = "Fitted Values",
+     ylab = "Residuals")
+plot(df_interp$life_expectancy,
+     test.model$residuals,
+     xlab = "Life Expectancy",
+     ylab = "Residuals")
+```
+
+$Life~Expectancy = 47.106 - 0.013(Adult~Mortality) + 0.289(Total~Expenditure) - 0.911(HIV/AIDS) + 36.649(Income~Composition~of~Resources)$
+
+## Linear Prediction Model
+
+Let's start again with the `df_clean` data set to perform feature engineering. We have already removed at this point variables that are highly correlated and rows/countries with `NA` for life expectancy. This leaves us with 17 other potential predictors and still quite a few `NA` values. We know we cannot have `NA` values to perform Ridge Regression or LASSO so need to either remove them, impute them, or change them to 0.
+
+### Deal with missing values
+
+```{r echo=FALSE}
+# Check for missing values
+tibble(variable = names(colSums(is.na(df_clean))),
+       missing = colSums(is.na(df_clean))) %>% 
+  gt()
+```
+
+Let's start by checking the relationships of each variable with \> 100 `NA`'s to see if they appear significant.
+
+```{r echo=FALSE, warning=FALSE}
+#Visualize the relationship to see if it looks significant (plot again)
+
+# hepatitis b
+df_clean %>% ggplot(aes(x = hepatitis_b, y = life_expectancy)) +
+  # geom_point() +
+  geom_jitter(alpha = 0.3) +
+  geom_smooth() +
+  labs(title = "Relationship of Hepatitis B and Life Expectancy",
+       x = "Hepatitis B",
+       y = "Life Expectancy") +
+  theme_ipsum()
+
+# total expenditure
+df_clean %>% ggplot(aes(x = total_expenditure, y = life_expectancy)) +
+  # geom_point() +
+  geom_jitter(alpha = 0.3) +
+  geom_smooth() +
+  labs(title = "Relationship of Total Expenditure and Life Expectancy",
+       x = "Total Expenditure",
+       y = "Life Expectancy") +
+  theme_ipsum()
+
+# alcohol
+df_clean %>% ggplot(aes(x = alcohol, y = life_expectancy)) +
+  # geom_point() +
+  geom_jitter(alpha = 0.3) +
+  geom_smooth() +
+  labs(title = "Relationship of Alcohol and Life Expectancy",
+       x = "Alcohol",
+       y = "Life Expectancy") +
+  theme_ipsum()
+
+# income composition of resources
+df_clean %>% ggplot(aes(x = income_composition_of_resources, y = life_expectancy)) +
+  # geom_point() +
+  geom_jitter(alpha = 0.3) +
+  geom_smooth() +
+  labs(title = "Relationship of Income Composition of Resources\nand Life Expectancy",
+       x = "Income Composition of Resources",
+       y = "Life Expectancy") +
+  theme_ipsum()
+
+# schooling
+df_clean %>% ggplot(aes(x = schooling, y = life_expectancy)) +
+  # geom_point() +
+  geom_jitter(alpha = 0.3) +
+  geom_smooth() +
+  labs(title = "Relationship of Schooling and Life Expectancy",
+       x = "Schooling",
+       y = "Life Expectancy") +
+  theme_ipsum()
+```
+
+The trend looks pretty flat for `hepatitis_b`, `total_expenditure`, and `alcohol` so I think it is safe for us to go ahead and remove these columns. However, there appears to be some relationship for `schooling` and possibly for `income composition of resources` as well, so instead of imputing these values let's go ahead and remove the `NA`'s for these two variables.
+
+```{r echo=FALSE}
+#remove hepatitis b and total_expenditure
+df_predict <- df_clean %>% 
+  select(-c(hepatitis_b, total_expenditure, alcohol))
+
+#remove the remaining NA's
+df_predict <- na.omit(df_predict)
+
+#check for NA's
+tibble(variable = names(colSums(is.na(df_predict))),
+       missing = colSums(is.na(df_predict))) %>% 
+  gt()
+```
+
+We now have 2,728 observations and 15 variables. Let's proceed to variable selection.
+
+```{r}
+#replot after removing Na's
+
+# income composition of resources
+df_predict %>% ggplot(aes(x = income_composition_of_resources, y = life_expectancy)) +
+  # geom_point() +
+  geom_jitter(alpha = 0.3) +
+  geom_smooth() +
+  labs(title = "Relationship of Income Composition of Resources\nand Life Expectancy",
+       x = "Income Composition of Resources",
+       y = "Life Expectancy") +
+  theme_ipsum()
+
+# schooling
+df_predict %>% ggplot(aes(x = schooling, y = life_expectancy)) +
+  # geom_point() +
+  geom_jitter(alpha = 0.3) +
+  geom_smooth() +
+  labs(title = "Relationship of Schooling and Life Expectancy",
+       x = "Schooling",
+       y = "Life Expectancy") +
+  theme_ipsum()
+```
+
+
+## Ridge Regression
+
+```{r}
+library(glmnet)
+
+# Ridge regression and lasso require the format 'x matrix' and 'y'. The
+# model.matrix() function produces a matrix and automatically transforms
+# qualitative variables into dummy variables.
+x <- model.matrix(life_expectancy ~ ., df_predict[,-1])[, -1]
+y <- df_predict$life_expectancy
+
+# Run ridge regression
+ridge_mod <- glmnet(x, y, alpha = 0)
+dim(coef(ridge_mod))
+
+# Split data into training and testing sets
+set.seed(1)
+train <- sample(1:nrow(x), nrow(x)/2)
+test <- (-train)
+y_test <- y[test]
+
+# Fit a ridge regression model on the training set, and evaluate its MSE on the
+# test set
+ridge_mod <- glmnet(x[train, ], y[train], alpha = 0)
+ridge_pred <- predict(ridge_mod, s = 4, newx = x[test, ])
+mean((ridge_pred - y_test) ^ 2)
+#[1] 17.4224
+
+# The test MSE is 17.4224. If we had simply fit a model with just an intercept,
+# we would have observed each test observation using the mean of the training
+# observations. In that case, we could compute the test set MSE like this:
+mean((mean(y[train]) - y_test) ^ 2)
+#[1] 89.45262
+
+# We could also get the same result by fitting a ridge regression model with a
+# very large value of ƛ.
+ridge_pred <- predict(ridge_mod, s = 1e10, newx = x[test, ])
+mean((ridge_pred - y_test) ^ 2)
+#[1] 89.45262
+
+# Use cross-validation to choose the tuning parameter ƛ.
+set.seed(1)
+cv_out <- cv.glmnet(x[train, ], y[train], alpha = 0)
+plot(cv_out)
+bestlambda <- cv_out$lambda.min
+bestlambda
+
+# What is the test MSE associated with bestlambda?
+ridge_pred <- predict(ridge_mod, s = bestlambda, newx = x[test, ])
+mean((ridge_pred - y_test) ^ 2)
+#[1] 16.2937
+
+# Refit the ridge regression model on the full data set using the value of ƛ
+# chosen by cross-validation
+out <- glmnet(x, y, alpha = 0)
+predict(out, type = "coefficients", s = bestlambda)[1:14,]
+```
+
+From ridge regression, we see the variables with the largest coefficients (in magnitude) are `statusDeveloped`, `income_composition_of_resources`, `schooling`, and `hiv_aids`. We will proceed with LASSO to determine another method of variable selection.
+
+## Lasso
+
+```{r}
+# Fit the lasso model
+lasso_mod <- glmnet(x[train, ], y[train], alpha = 1)
+
+# Plot the lasso model
+plot(lasso_mod)
+
+plot_glmnet(lasso_mod)
+
+# Run cross-validation and compute the associated test error
+set.seed(1)
+cv_out <- cv.glmnet(x[train, ], y[train], alpha = 1)
+plot(cv_out)
+bestlambda <- cv_out$lambda.min
+lasso_pred <- predict(lasso_mod, s = bestlambda, newx = x[test, ])
+mean((lasso_pred - y_test) ^ 2)
+#[1] 16.41776
+
+# Compute lasso coefficients
+out <- glmnet(x, y, alpha = 1)
+lasso_coef <- predict(out, type = "coefficients", s = bestlambda)[1:14,]
+lasso_coef[lasso_coef != 0]
+```
+
+LASSO variable selection does not help us reduce our variables down, as it indicates all variables are non-zero. Our ASE is comparable to ridge regression around 16.4, which is worse than our interpretable model (although our interpretable model is on a much smaller scale). Let's proceed with imputation instead or removal of the `NA`'s on our data set to see if that improves performance, as our primary goal is just prediction.
+
+## Impute Values
+
+```{r}
+#plot distributions
+
+# Copy the data
+df_predict2 <- df_clean %>% 
+  select(-c(hepatitis_b))
+
+
+# Impute the data set
+df_predict2 <- df_predict2 %>%
+  mutate(across(
+    c(polio, total_expenditure, diphtheria),
+    ~ replace_na(., median(.x, na.rm = TRUE))
+  )) %>% 
+  mutate(across(
+    c(bmi, income_composition_of_resources, schooling),
+    ~ replace_na(., mean(.x, na.rm = TRUE))
+  )) %>% 
+  mutate(across(
+    c(alcohol, thinness_5_9_years),
+    ~ replace_na(., 0)
+  ))
+
+
+#check for NA's
+tibble(variable = names(colSums(is.na(df_knn))),
+       missing = colSums(is.na(df_knn))) %>% 
+  gt()
+
+```
+
+Based on the histograms and distributions, we decided to impute the median for `polio`, `total_expenditure`, and `diptheria`, the mean for `bmi`, `income_composition_of_resources`, and `schooling`, and 0 for `alcohol` and `thinness_5_9_years`. Now our data set has 2,928 observations with 18 variables including our response variable.
+
+## Ridge Regression 2.0
+
+```{r}
+# Ridge regression and lasso require the format 'x matrix' and 'y'. The
+# model.matrix() function produces a matrix and automatically transforms
+# qualitative variables into dummy variables.
+sum(is.na(df_predict2))
+x2 <- model.matrix(life_expectancy ~ ., df_predict2[,-1])[, -1]
+y2 <- df_predict2$life_expectancy
+
+# Run ridge regression
+ridge_mod2 <- glmnet(x2, y2, alpha = 0)
+dim(coef(ridge_mod2))
+
+# Split data into training and testing sets
+set.seed(1)
+train2 <- sample(1:nrow(x2), nrow(x2)/2)
+test2 <- (-train2)
+y_test2 <- y2[test2]
+
+# Fit a ridge regression model on the training set, and evaluate its MSE on the
+# test set
+ridge_mod2 <- glmnet(x2[train2,], y2[train2], alpha = 0)
+ridge_pred2 <- predict(ridge_mod2, s = 4, newx = x2[test2, ])
+mean((ridge_pred2 - y_test2) ^ 2)
+#[1] 19.39197
+
+# The test MSE is 19.39197. If we had simply fit a model with just an intercept,
+# we would have observed each test observation using the mean of the training
+# observations. In that case, we could compute the test set MSE like this:
+mean((mean(y2[train2]) - y_test2) ^ 2)
+#[1] 88.25497
+
+# Use cross-validation to choose the tuning parameter ƛ.
+set.seed(1)
+cv_out2 <- cv.glmnet(x2[train2, ], y2[train2], alpha = 0)
+plot(cv_out2)
+bestlambda2 <- cv_out2$lambda.min
+bestlambda2
+#[1] 0.6900917
+
+# What is the test MSE associated with bestlambda?
+ridge_pred2 <- predict(ridge_mod2, s = bestlambda2, newx = x2[test2, ])
+mean((ridge_pred2 - y_test2) ^ 2)
+#[1] 18.68608
+
+# Refit the ridge regression model on the full data set using the value of ƛ
+# chosen by cross-validation
+out2 <- glmnet(x2, y2, alpha = 0)
+predict(out2, type = "coefficients", s = bestlambda2)[1:14,]
+```
+
+```{r}
+# Fit the lasso model
+lasso_mod2 <- glmnet(x2[train2, ], y2[train2], alpha = 1)
+
+# Plot the lasso model
+plot(lasso_mod2)
+
+#install.packages("plotmo")
+library(plotmo)
+
+plot_glmnet(lasso_mod2)
+
+# Run cross-validation and compute the associated test error
+set.seed(1)
+cv_out2 <- cv.glmnet(x2[train2, ], y2[train2], alpha = 1)
+plot(cv_out2)
+bestlambda2 <- cv_out2$lambda.min
+lasso_pred2 <- predict(lasso_mod2, s = bestlambda2, newx = x2[test2, ])
+mean((lasso_pred2 - y_test2) ^ 2)
+#[1] 18.74681
+
+# Compute lasso coefficients
+out2 <- glmnet(x2, y2, alpha = 1)
+lasso_coef2 <- predict(out2, type = "coefficients", s = bestlambda2)[1:14,]
+lasso_coef2[lasso_coef2 != 0]
+```
+
+The top 3 variables using LASSO on the imputed data set are similar to the non-imputed data set: `statusDeveloped`, `schooling`, and `hiv_aids`
+
+```{r}
+# Fit the lasso model with data set including country
+x3 <- model.matrix(life_expectancy ~ ., df_predict2)[, -1]
+y3 <- df_predict2$life_expectancy
+
+# Split data into training and testing sets
+set.seed(1)
+train3 <- sample(1:nrow(x3), nrow(x3)/2)
+test3 <- (-train3)
+y_test3 <- y3[test3]
+
+lasso_mod3 <- glmnet(x3[train3, ], y3[train3], alpha = 1)
+
+# Plot the lasso model
+plot(lasso_mod3)
+
+# Run cross-validation and compute the associated test error
+set.seed(1)
+cv_out3 <- cv.glmnet(x3[train3, ], y3[train3], alpha = 1)
+plot(cv_out3)
+bestlambda3 <- cv_out3$lambda.min
+lasso_pred3 <- predict(lasso_mod3, s = bestlambda3, newx = x3[test3, ])
+mean((lasso_pred3 - y_test3) ^ 2)
+#[1] 18.74681
+
+# Compute lasso coefficients
+out3 <- glmnet(x3, y3, alpha = 1)
+lasso_coef3 <- predict(out3, type = "coefficients", s = bestlambda3)[1:14,]
+lasso_coef3[lasso_coef3 != 0]
+```
+
+Based on these coefficients, it does appear that country is significant when predicting life expectancy. We removed it from our interpretable model as it would have been incredibly difficult to interpret a model with this many coefficients. However, since our goal is only prediction, let's include country in our final predictive model along with the top 3 variables from LASSO: `statusDeveloped`, `schooling`, and `hiv_aids`.
+
+```{r}
+#build a linear model using the top 3 variables from LASSO along with country for both imputed data set and removed NA data set
+
+# Build the final model using the best subset selection results on the imputed data set
+predict_model1 <-
+  lm(
+    life_expectancy ~ country +
+      status +
+      schooling +
+      hiv_aids,
+    data = df_predict2
+)
+
+# Final model summary
+predict_model1_sum <- summary(predict_model1)
+predict_model1_sum
+
+# Get MSE
+mean(predict_model1_sum$residuals ^ 2)
+#[1] 4.446233
+
+# Build the final model using the best subset selection results on removed NA data set
+predict_model2 <-
+  lm(
+    life_expectancy ~ country +
+      status +
+      schooling +
+      hiv_aids,
+    data = df_predict
+)
+
+# Final model summary
+predict_model2_sum <- summary(predict_model2)
+predict_model2_sum
+
+# Get MSE
+mean(predict_model2_sum$residuals ^ 2)
+#[1] 4.254968
+```
+
+Make determination for which model to use above (imputed versus remove NA - metrics are not that different). What else can we do to avoid overfit?
+
+## Check residuals just for fun
+
+```{r echo=FALSE}
+par(mfrow = c(1, 1))
+plot(
+  predict_model2$fitted.values,
+  df_predict$life_expectancy,
+  xlab = "Predicted Life Expectancy",
+  ylab = "Actual Life Expectancy"
+)
+lines(c(0, 90), c(0, 90), col = "red")
+
+par(mfrow=c(2,2))
+plot(predict_model2)
+```
+
+## KNN Model
+
+We will proceed with the imputed data set we used in our predictive model above.
+
+```{r}
+
+#copy and rename imputed data set for KNN models
+df_knn <- df_predict2
+
+#Make new data set that does not impute values for comparison
+df_knn2 <- df_clean
+df_knn2 <- drop_na(df_knn2)
+
+
+# Set seed
+set.seed(123)
+
+# Standardize the data to prep for KNN first - everything except life expectancy
+preProcValues <- preProcess(df_knn[, -4], method = c("scale"))
+df_knn_standard <- predict(preProcValues, df_knn)
+
+# Split training/test data sets
+inTraining <-
+  createDataPartition(df_knn_standard$life_expectancy,
+                      p = 0.75,
+                      list = FALSE)
+knn_train  <- df_knn_standard[inTraining, ]
+knn_test   <- df_knn_standard[-inTraining, ]
+
+# Perform same splits for data with NA's removed
+# Standardize the data to prep for KNN first - everything except life expectancy
+preProcValues_2 <- preProcess(df_knn2[, -4], method = c("scale"))
+df_knn_standard2 <- predict(preProcValues_2, df_knn2)
+
+# Split training/test data sets
+inTraining2 <-
+  createDataPartition(df_knn_standard2$life_expectancy,
+                      p = 0.75,
+                      list = FALSE)
+knn_train_na  <- df_knn_standard2[inTraining2, ]
+knn_test_na   <- df_knn_standard2[-inTraining2, ]
+```
+
+
+
+```{r}
+# Set seed
+set.seed(567)
+
+# Set train control: 5 repeat, 10-fold CV
+ctrl <-
+  trainControl(
+    method = "repeatedcv",
+    number = 10, # 10-fold CV
+    repeats = 5, #repeat 5 times
+    returnResamp = "all" #return all metrics
+  ) 
+
+# Run everything with the train control above
+knnFit <-
+  train(
+    life_expectancy ~ .,
+    data = knn_train,
+    method = "knn",
+    trControl = ctrl,
+    tuneLength = 10 #run for 10 different k's
+  )
+knnFit
+
+# Check the metrics on the test set
+Predictions_knn5 <- predict(knnFit, newdata = knn_test)
+ASE_knn5 <- mean((Predictions_knn5 - knn_test$life_expectancy)^2)
+ASE_knn5
+
+# Performance measurement
+postResample(knn_test$life_expectancy, Predictions_knn5)
+
+
+# Plotting
+plot(knnFit, main = "knnFit Results")  
+plot(knnFit, metric = "Rsquared", main = "knnFit Results (R-Squared)")
+plot(knnFit, metric = "MAE", main = "knnFit Results (MAE)")
+
+# Try another knn with a k value of less than 5
+knnFit2 <-
+  train(
+    life_expectancy ~ .,
+    data = knn_train,
+    method = "knn",
+    trControl = ctrl,
+    tuneGrid = expand.grid(k = c(1, 3, 5)) #run only with k = 1, 3, 5
+  )
+knnFit2
+
+# Check the metrics on the test set
+Predictions_knn3 <- predict(knnFit2, newdata = knn_test)
+ASE_knn3 <- mean((Predictions_knn3 - knn_test$life_expectancy)^2)
+ASE_knn3
+
+# Performance measurement
+postResample(knn_test$life_expectancy, Predictions_knn3)
+
+# Plotting
+plot(knnFit2, main = "knnFit2 Results")  
+plot(knnFit2, metric = "Rsquared", main = "knnFit2 Results (R-Squared)")
+plot(knnFit2, metric = "MAE", main = "knnFit2 Results (MAE)")
+```
+
+Based on our training data set, we have surprisingly good results with the imputed data set and all of the predictors. Our RMSE is around 3 and our Rsquared is in the 90's. Since the Rsquared is so high, there is risk of over-fit. Let's also run another model using our KNN data set where we just removed the `NA` values instead of imputing them.
+
+```{r}
+
+# Run knn on data set with NA's removed
+knnFit_na <-
+  train(
+    life_expectancy ~ .,
+    data = knn_train_na,
+    method = "knn",
+    trControl = ctrl,
+    tuneLength = 10 #run through 10 different k's
+  )
+knnFit_na
+
+# Check the metrics on the test set
+Predictions_knn_na <- predict(knnFit_na, newdata = knn_test_na)
+ASE_knn_na <- mean((Predictions_knn_na - knn_test_na$life_expectancy)^2)
+ASE_knn_na
+
+# Performance measurement
+postResample(knn_test_na$life_expectancy, Predictions_knn_na)
+
+```
+
+Even with a smaller data set, the metrics are still pretty good but we do see some decline in Rquared and an increase in RMSE and ASE. 
+
+## Variable Selection for KNN
+
+Let's now test KNN using the same 4 predictors from our first linear model and compare our results with all of the predictors.
+
+```{r}
+knnFit3 <-
+  train(
+    life_expectancy ~ adult_mortality +
+      total_expenditure +
+      hiv_aids +
+      income_composition_of_resources,
+    data = knn_train,
+    method = "knn",
+    trControl = ctrl,
+    tuneLength = 10
+  )
+knnFit3
+
+```
+
+```{r}
+#check metrics on test set
+Predictions_knnfit3 <- predict(knnFit3,newdata=knn_test)
+#performance measurement
+postResample(knn_test$life_expectancy,Predictions_knnfit3)
+ASE_knn3 <- mean((Predictions_knnfit3 - knn_test$life_expectancy)^2)
+ASE_knn3
+
+plot(knnFit3)  
+plot(knnFit3, metric = "Rsquared")
+plot(knnFit3, metric = "MAE")
+```
+
+
+We see that using all of the predictors and then comparing with just the four ones we deemed important from our first model (which was on a much more limited data set) gives us approximately the same adj R2 value and RMSE. When applying to our test data set, it does not appear that our models are over-fitting as we do not see a big shift in our metrics, even though an adj R2 in the 90's is normally a warning sign for an over-fitting model.
+
+## Check for Over Fit
+
+Let's create one more train/test split for our KNN models to verify our metrics and confirm there is no over-fitting, as we are suspicious of the high Rsquared values which are typically indicative of overfit.
+
+```{r}
+# Split training/test data sets - round 2
+set.seed(1)
+inTraining_x <-
+  createDataPartition(df_knn_standard$life_expectancy,
+                      p = 0.75,
+                      list = FALSE)
+knn_train_x  <- df_knn_standard[inTraining_x, ]
+knn_test_x   <- df_knn_standard[-inTraining_x, ]
+
+# Run everything with the train control above
+knnFit_x <-
+  train(
+    life_expectancy ~ .,
+    data = knn_train_x,
+    method = "knn",
+    trControl = ctrl,
+    tuneLength = 10
+  )
+knnFit_x
+
+# Check the metrics on the test set
+Predictions_knnFit_x <- predict(knnFit_x, newdata = knn_test_x)
+ASE_x <- mean((Predictions_knnfit_x - knn_test_x$life_expectancy)^2)
+ASE_x
+
+# Performance measurement
+postResample(knn_test_x$life_expectancy, Predictions_knnFit_x)
+
+# Plotting
+plot(knnFit_x, main = "knnFit Results")  
+plot(knnFit_x, metric = "Rsquared", main = "knnFit Results (R-Squared)")
+plot(knnFit_x, metric = "MAE", main = "knnFit Results (MAE)")
+
+# Try another knn with a k value of less than 5
+knnFit2_x <-
+  train(
+    life_expectancy ~ .,
+    data = knn_train_x,
+    method = "knn",
+    trControl = ctrl,
+    tuneGrid = expand.grid(k = c(1, 3, 5))
+  )
+knnFit2_x
+
+# Check the metrics on the test set
+Predictions_knnFit2_x <- predict(knnFit2_x, newdata = knn_test_x)
+ASE_x <- mean((Predictions_knnfit3_x - knn_test_x$life_expectancy)^2)
+ASE_x
+
+# Performance measurement
+postResample(knn_test_x$life_expectancy, Predictions_knnFit2_x)
+
+# Plotting
+plot(knnFit2_x, main = "knnFit2 Results")  
+plot(knnFit2_x, metric = "Rsquared", main = "knnFit2 Results (R-Squared)")
+plot(knnFit2_x, metric = "MAE", main = "knnFit2 Results (MAE)")
+
+knnFit3_x <-
+  train(
+    life_expectancy ~ adult_mortality +
+      total_expenditure +
+      hiv_aids +
+      income_composition_of_resources,
+    data = knn_train_x,
+    method = "knn",
+    trControl = ctrl,
+    tuneLength = 10
+  )
+knnFit3_x
+
+# Check the metrics on the test set
+Predictions_knnFit3_x <- predict(knnFit3_x, newdata = knn_test_x)
+ASE_3x <- mean((Predictions_knnfit3_x - knn_test_x$life_expectancy)^2)
+ASE_3x
+
+# Performance measurement
+postResample(knn_test_x$life_expectancy, Predictions_knnFit3_x)
+
+
+# Plotting
+plot(knnFit3_x, main = "knnFit2 Results")  
+plot(knnFit3_x, metric = "Rsquared", main = "knnFit2 Results (R-Squared)")
+plot(knnFit3_x, metric = "MAE", main = "knnFit2 Results (MAE)")
+
+```
+
+## Trees
+
+Let's run some tree models to see if we get better metrics that we think may be less susceptible to over-fitting.
+
+```{r}
+# Set seed
+set.seed(123)
+
+# Split training/test data sets
+inTraining <- createDataPartition(df_knn$life_expectancy, p = 0.75, list = FALSE)
+tree_train  <- df_knn[inTraining,]
+tree_test   <- df_knn[-inTraining,]
+
+# Remove country because this tree function has a maximum of 32 levels
+tree1 <- tree(life_expectancy ~ ., data = tree_train[, -1])
+summary(tree1)
+plot(tree1)
+
+# Check tree performance
+cv.tree1 <- cv.tree(tree1)
+plot(cv.tree1$size, cv.tree1$dev, type = 'b')
+
+# Check the predictions
+yhat = predict(tree1, newdata = tree_test[, -1])
+plot(yhat, tree_test$life_expectancy)
+abline(0, 1)
+mean((yhat - tree_test$life_expectancy) ^ 2)
+
+# Try a random forest compared to a single tree model
+set.seed(1)
+
+# Remove country again
+rfFit <- randomForest(life_expectancy ~ ., data = tree_train[, -1])
+rfFit
+
+# Test using all predictors for each tree
+set.seed(1)
+
+# Have to remove country again - using top 4 predictors
+rfFit2 <- randomForest(life_expectancy ~ adult_mortality +
+      total_expenditure +
+      hiv_aids +
+      income_composition_of_resources, data = tree_train[,-1])
+rfFit2
+
+#compare y-hat for the two random forest models
+yhat.rf <- predict(rfFit, newdata = tree_test[, -1])
+yhat.rf2 <- predict(rfFit2, newdata = tree_test[, -1])
+
+# Performance measurement
+postResample(tree_test$life_expectancy, yhat.rf)
+postResample(tree_test$life_expectancy, yhat.rf2)
+
+ASE_rf <- mean((yhat.rf - tree_test$life_expectancy)^2)
+ASE_rf
+
+ASE_rf2 <- mean((yhat.rf2 - tree_test$life_expectancy)^2)
+ASE_rf2
+
+plot(yhat.rf, tree_test$life_expectancy)
+abline(0,1)
+
+plot(yhat.rf2,tree_test$life_expectancy)
+abline(0,1)
+```
+
+The random forest model that includes all predictors has smaller ASE than the random forest model that only includes the four important variables we used in our interpretable model.
+
+## Check for overfit again
+
+Let's do another train/test split also for the random forest to check for overfitting, as the Rsquared values for RF are much higher than KNN.
+
+```{r}
+# Set seed
+set.seed(1)
+
+# Split training/test data sets
+inTraining_t <- createDataPartition(df_knn$life_expectancy, p = 0.75, list = FALSE)
+tree_train_x  <- df_knn[inTraining_t,]
+tree_test_x   <- df_knn[-inTraining_t,]
+
+# Try a random forest compared to a single tree model
+set.seed(567)
+
+# Remove country again
+rfFit_x <- randomForest(life_expectancy ~ ., data = tree_train_x[, -1])
+rfFit_x
+
+# Test using all predictors for each tree
+set.seed(5)
+
+# Have to remove country again - using top 4 predictors
+rfFit2_x <- randomForest(life_expectancy ~ adult_mortality +
+      total_expenditure +
+      hiv_aids +
+      income_composition_of_resources, data = tree_train_x[,-1])
+rfFit2_x
+
+#compare y-hat for the two random forest models
+yhat.rf_x <- predict(rfFit_x, newdata = tree_test_x[, -1])
+yhat.rf2_x <- predict(rfFit2_x, newdata = tree_test_x[, -1])
+
+# Performance measurement
+postResample(tree_test_x$life_expectancy, yhat.rf_x)
+postResample(tree_test_x$life_expectancy, yhat.rf2_x)
+
+plot(yhat.rf_x, tree_test_x$life_expectancy)
+abline(0,1)
+
+plot(yhat.rf2_x,tree_test_x$life_expectancy)
+abline(0,1)
+```
+
+
+
+## Objective 1
+
+### Restatement of Problem and the Overall Approach to Solve It
+
+### Model Selection
+
+#### Type of Selection
+
+-   LASSO
+-   RIDGE
+-   ELASTIC NET
+-   Stepwise
+-   Forward
+-   Backward
+-   Manual / Intuition
+-   A mix of all of the above
+
+#### Checking Assumptions
+
+-   Residual Plots
+-   Influential point analysis (Cook's D and Leverage)
+
+#### Compare Competing Models
+
+Via: Training and test set split or CV Possible Metrics: ASE (Required), AIC, BIC, adj R2, are all welcome additions
+
+#### Parameter Interpretation (Simple model only)
+
+-   Interpretation
+-   Confidence Intervals
+
+#### Additional Details on a more complicated regression model
+
+## Objective 2 Deliverable (see above)
+
+Final conclusions from the analyses of Objective 1's interpretable model and include comments on what model would be recommended if prediction was the only goal (comparing all models considered).
+
+## Appendix
+
+### Figures
+
+### R Code
+
+```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+
+```
