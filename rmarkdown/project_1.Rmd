@@ -16,6 +16,7 @@ library(leaps)
 library(caret)
 library(tree)
 library(randomForest)
+library(plotmo)
 ```
 
 ## Introduction
@@ -508,8 +509,8 @@ Let's start by checking the relationships of each variable with \> 100 `NA`'s to
 #Visualize the relationship to see if it looks significant (plot again)
 
 # hepatitis b
-df_clean %>% ggplot(aes(x = hepatitis_b, y = life_expectancy)) +
-  # geom_point() +
+df_clean %>% 
+  ggplot(aes(x = hepatitis_b, y = life_expectancy)) +
   geom_jitter(alpha = 0.3) +
   geom_smooth() +
   labs(title = "Relationship of Hepatitis B and Life Expectancy",
@@ -518,8 +519,8 @@ df_clean %>% ggplot(aes(x = hepatitis_b, y = life_expectancy)) +
   theme_ipsum()
 
 # total expenditure
-df_clean %>% ggplot(aes(x = total_expenditure, y = life_expectancy)) +
-  # geom_point() +
+df_clean %>% 
+  ggplot(aes(x = total_expenditure, y = life_expectancy)) +
   geom_jitter(alpha = 0.3) +
   geom_smooth() +
   labs(title = "Relationship of Total Expenditure and Life Expectancy",
@@ -528,8 +529,8 @@ df_clean %>% ggplot(aes(x = total_expenditure, y = life_expectancy)) +
   theme_ipsum()
 
 # alcohol
-df_clean %>% ggplot(aes(x = alcohol, y = life_expectancy)) +
-  # geom_point() +
+df_clean %>%
+  ggplot(aes(x = alcohol, y = life_expectancy)) +
   geom_jitter(alpha = 0.3) +
   geom_smooth() +
   labs(title = "Relationship of Alcohol and Life Expectancy",
@@ -538,8 +539,8 @@ df_clean %>% ggplot(aes(x = alcohol, y = life_expectancy)) +
   theme_ipsum()
 
 # income composition of resources
-df_clean %>% ggplot(aes(x = income_composition_of_resources, y = life_expectancy)) +
-  # geom_point() +
+df_clean %>% 
+  ggplot(aes(x = income_composition_of_resources, y = life_expectancy)) +
   geom_jitter(alpha = 0.3) +
   geom_smooth() +
   labs(title = "Relationship of Income Composition of Resources\nand Life Expectancy",
@@ -548,8 +549,8 @@ df_clean %>% ggplot(aes(x = income_composition_of_resources, y = life_expectancy
   theme_ipsum()
 
 # schooling
-df_clean %>% ggplot(aes(x = schooling, y = life_expectancy)) +
-  # geom_point() +
+df_clean %>% 
+  ggplot(aes(x = schooling, y = life_expectancy)) +
   geom_jitter(alpha = 0.3) +
   geom_smooth() +
   labs(title = "Relationship of Schooling and Life Expectancy",
@@ -580,7 +581,8 @@ We now have 2,728 observations and 15 variables. Let's proceed to variable selec
 #replot after removing Na's
 
 # income composition of resources
-df_predict %>% ggplot(aes(x = income_composition_of_resources, y = life_expectancy)) +
+df_predict %>%
+  ggplot(aes(x = income_composition_of_resources, y = life_expectancy)) +
   # geom_point() +
   geom_jitter(alpha = 0.3) +
   geom_smooth() +
@@ -599,7 +601,6 @@ df_predict %>% ggplot(aes(x = schooling, y = life_expectancy)) +
        y = "Life Expectancy") +
   theme_ipsum()
 ```
-
 
 ## Ridge Regression
 
@@ -627,16 +628,19 @@ y_test <- y[test]
 ridge_mod <- glmnet(x[train, ], y[train], alpha = 0)
 ridge_pred <- predict(ridge_mod, s = 4, newx = x[test, ])
 mean((ridge_pred - y_test) ^ 2)
+#[1] 17.4224
 
 # The test MSE is 17.4224. If we had simply fit a model with just an intercept,
 # we would have observed each test observation using the mean of the training
 # observations. In that case, we could compute the test set MSE like this:
 mean((mean(y[train]) - y_test) ^ 2)
+#[1] 89.45262
 
 # We could also get the same result by fitting a ridge regression model with a
 # very large value of ƛ.
 ridge_pred <- predict(ridge_mod, s = 1e10, newx = x[test, ])
 mean((ridge_pred - y_test) ^ 2)
+#[1] 89.45262
 
 # Use cross-validation to choose the tuning parameter ƛ.
 set.seed(1)
@@ -648,6 +652,7 @@ bestlambda
 # What is the test MSE associated with bestlambda?
 ridge_pred <- predict(ridge_mod, s = bestlambda, newx = x[test, ])
 mean((ridge_pred - y_test) ^ 2)
+#[1] 16.2937
 
 # Refit the ridge regression model on the full data set using the value of ƛ
 # chosen by cross-validation
@@ -678,19 +683,48 @@ lasso_coef <- predict(out, type = "coefficients", s = bestlambda)[1:14,]
 lasso_coef[lasso_coef != 0]
 ```
 
-## KNN Model
+From ridge regression, we see the variables with the largest coefficients (in magnitude) are `statusDeveloped`, `income_composition_of_resources`, `schooling`, and `hiv_aids`. We will proceed with LASSO to determine another method of variable selection.
 
-For the KNN model, we will try to impute some values based on the distribution (either choosing the mean, median, or 0) and test how that impacts our metrics. To determine whether or not to impute, and what value to use, we reviewed the histograms of each variable with NA values to determine if we should impute the mean, median, or 0. Based on the histograms and distributions, we decided to impute the median for `hepatitis_ B_b`, `polio`, `total_expenditure`, and `diptheria`, the mean for `bmi`, `income_composition_of_resources`, and `schooling`, and 0 for `alcohol` and `thinness_5_9_years`.
+## Lasso
 
 ```{r}
+# Fit the lasso model
+lasso_mod <- glmnet(x[train, ], y[train], alpha = 1)
+
+# Plot the lasso model
+plot(lasso_mod)
+
+plot_glmnet(lasso_mod)
+
+# Run cross-validation and compute the associated test error
+set.seed(1)
+cv_out <- cv.glmnet(x[train, ], y[train], alpha = 1)
+plot(cv_out)
+bestlambda <- cv_out$lambda.min
+lasso_pred <- predict(lasso_mod, s = bestlambda, newx = x[test, ])
+mean((lasso_pred - y_test) ^ 2)
+#[1] 16.41776
+
+# Compute lasso coefficients
+out <- glmnet(x, y, alpha = 1)
+lasso_coef <- predict(out, type = "coefficients", s = bestlambda)[1:14,]
+lasso_coef[lasso_coef != 0]
+```
+
+LASSO variable selection does not help us reduce our variables down, as it indicates all variables are non-zero. Our ASE is comparable to ridge regression around 16.4, which is worse than our interpretable model (although our interpretable model is on a much smaller scale). Let's proceed with imputation instead or removal of the `NA`'s on our data set to see if that improves performance, as our primary goal is just prediction.
+
+## Impute Values
+
+```{r}
+#plot distributions
+
 # Copy the data
-df_knn <- df_clean
-#Make new data set that does not impute values for comparison
-df_knn2 <- df_clean
-df_knn2 <- drop_na(df_knn2)
+df_predict2 <- df_clean %>% 
+  select(-c(hepatitis_b))
+
 
 # Impute the data set
-df_knn <- df_knn %>%
+df_predict2 <- df_predict2 %>%
   mutate(across(
     c(polio, total_expenditure, diphtheria),
     ~ replace_na(., median(.x, na.rm = TRUE))
@@ -704,19 +738,202 @@ df_knn <- df_knn %>%
     ~ replace_na(., 0)
   ))
 
-#remove hepatitis b to match above
-df_knn <- df_knn %>%
-  select(-hepatitis_b)
-
-# # Check the histograms to see if there any shifts after imputing
-# for (col in 4:ncol(df_knn)) {
-#     hist(df_knn[,col], main=names(df_knn[col]))
-# }
 
 #check for NA's
-tibble(variable = names(colSums(is.na(df_knn))),
-       missing = colSums(is.na(df_knn))) %>% 
+tibble(variable = names(colSums(is.na(df_predict2))),
+       missing = colSums(is.na(df_predict2))) %>% 
   gt()
+
+```
+
+Based on the histograms and distributions, we decided to impute the median for `polio`, `total_expenditure`, and `diptheria`, the mean for `bmi`, `income_composition_of_resources`, and `schooling`, and 0 for `alcohol` and `thinness_5_9_years`. Now our data set has 2,928 observations with 18 variables including our response variable.
+
+## Ridge Regression 2.0
+
+```{r}
+# Ridge regression and lasso require the format 'x matrix' and 'y'. The
+# model.matrix() function produces a matrix and automatically transforms
+# qualitative variables into dummy variables.
+sum(is.na(df_predict2))
+x2 <- model.matrix(life_expectancy ~ ., df_predict2[,-1])[, -1]
+y2 <- df_predict2$life_expectancy
+
+# Run ridge regression
+ridge_mod2 <- glmnet(x2, y2, alpha = 0)
+dim(coef(ridge_mod2))
+
+# Split data into training and testing sets
+set.seed(1)
+train2 <- sample(1:nrow(x2), nrow(x2)/2)
+test2 <- (-train2)
+y_test2 <- y2[test2]
+
+# Fit a ridge regression model on the training set, and evaluate its MSE on the
+# test set
+ridge_mod2 <- glmnet(x2[train2,], y2[train2], alpha = 0)
+ridge_pred2 <- predict(ridge_mod2, s = 4, newx = x2[test2, ])
+mean((ridge_pred2 - y_test2) ^ 2)
+#[1] 19.39197
+
+# The test MSE is 19.39197. If we had simply fit a model with just an intercept,
+# we would have observed each test observation using the mean of the training
+# observations. In that case, we could compute the test set MSE like this:
+mean((mean(y2[train2]) - y_test2) ^ 2)
+#[1] 88.25497
+
+# Use cross-validation to choose the tuning parameter ƛ.
+set.seed(1)
+cv_out2 <- cv.glmnet(x2[train2, ], y2[train2], alpha = 0)
+plot(cv_out2)
+bestlambda2 <- cv_out2$lambda.min
+bestlambda2
+#[1] 0.6900917
+
+# What is the test MSE associated with bestlambda?
+ridge_pred2 <- predict(ridge_mod2, s = bestlambda2, newx = x2[test2, ])
+mean((ridge_pred2 - y_test2) ^ 2)
+#[1] 18.68608
+
+# Refit the ridge regression model on the full data set using the value of ƛ
+# chosen by cross-validation
+out2 <- glmnet(x2, y2, alpha = 0)
+predict(out2, type = "coefficients", s = bestlambda2)[1:14,]
+```
+
+```{r}
+# Fit the lasso model
+lasso_mod2 <- glmnet(x2[train2, ], y2[train2], alpha = 1)
+
+# Plot the lasso model
+plot(lasso_mod2)
+
+#install.packages("plotmo")
+library(plotmo)
+
+plot_glmnet(lasso_mod2)
+
+# Run cross-validation and compute the associated test error
+set.seed(1)
+cv_out2 <- cv.glmnet(x2[train2, ], y2[train2], alpha = 1)
+plot(cv_out2)
+bestlambda2 <- cv_out2$lambda.min
+lasso_pred2 <- predict(lasso_mod2, s = bestlambda2, newx = x2[test2, ])
+mean((lasso_pred2 - y_test2) ^ 2)
+#[1] 18.74681
+
+# Compute lasso coefficients
+out2 <- glmnet(x2, y2, alpha = 1)
+lasso_coef2 <- predict(out2, type = "coefficients", s = bestlambda2)[1:14,]
+lasso_coef2[lasso_coef2 != 0]
+```
+
+The top 3 variables using LASSO on the imputed data set are similar to the non-imputed data set: `statusDeveloped`, `schooling`, and `hiv_aids`
+
+```{r}
+# Fit the lasso model with data set including country
+x3 <- model.matrix(life_expectancy ~ ., df_predict2)[, -1]
+y3 <- df_predict2$life_expectancy
+
+# Split data into training and testing sets
+set.seed(1)
+train3 <- sample(1:nrow(x3), nrow(x3)/2)
+test3 <- (-train3)
+y_test3 <- y3[test3]
+
+lasso_mod3 <- glmnet(x3[train3, ], y3[train3], alpha = 1)
+
+# Plot the lasso model
+plot(lasso_mod3)
+
+# Run cross-validation and compute the associated test error
+set.seed(1)
+cv_out3 <- cv.glmnet(x3[train3, ], y3[train3], alpha = 1)
+plot(cv_out3)
+bestlambda3 <- cv_out3$lambda.min
+lasso_pred3 <- predict(lasso_mod3, s = bestlambda3, newx = x3[test3, ])
+mean((lasso_pred3 - y_test3) ^ 2)
+#[1] 18.74681
+
+# Compute lasso coefficients
+out3 <- glmnet(x3, y3, alpha = 1)
+lasso_coef3 <- predict(out3, type = "coefficients", s = bestlambda3)[1:14,]
+lasso_coef3[lasso_coef3 != 0]
+```
+
+Based on these coefficients, it does appear that country is significant when predicting life expectancy. We removed it from our interpretable model as it would have been incredibly difficult to interpret a model with this many coefficients. However, since our goal is only prediction, let's include country in our final predictive model along with the top 3 variables from LASSO: `statusDeveloped`, `schooling`, and `hiv_aids`.
+
+```{r}
+#build a linear model using the top 3 variables from LASSO along with country for both imputed data set and removed NA data set
+
+# Build the final model using the best subset selection results on the imputed data set
+predict_model1 <-
+  lm(
+    life_expectancy ~ country +
+      status +
+      schooling +
+      hiv_aids,
+    data = df_predict2
+)
+
+# Final model summary
+predict_model1_sum <- summary(predict_model1)
+predict_model1_sum
+
+# Get MSE
+mean(predict_model1_sum$residuals ^ 2)
+#[1] 4.446233
+
+# Build the final model using the best subset selection results on removed NA data set
+predict_model2 <-
+  lm(
+    life_expectancy ~ country +
+      status +
+      schooling +
+      hiv_aids,
+    data = df_predict
+)
+
+# Final model summary
+predict_model2_sum <- summary(predict_model2)
+predict_model2_sum
+
+# Get MSE
+mean(predict_model2_sum$residuals ^ 2)
+#[1] 4.254968
+```
+
+Make determination for which model to use above (imputed versus remove NA - metrics are not that different). What else can we do to avoid overfit?
+
+## Check residuals just for fun
+
+```{r echo=FALSE}
+par(mfrow = c(1, 1))
+plot(
+  predict_model2$fitted.values,
+  df_predict$life_expectancy,
+  xlab = "Predicted Life Expectancy",
+  ylab = "Actual Life Expectancy"
+)
+lines(c(0, 90), c(0, 90), col = "red")
+
+par(mfrow=c(2,2))
+plot(predict_model2)
+```
+
+## KNN Model
+
+We will proceed with the imputed data set we used in our predictive model above.
+
+
+```{r}
+
+#copy and rename imputed data set for KNN models
+df_knn <- df_predict2
+
+#Make new data set that does not impute values for comparison
+df_knn2 <- df_clean
+df_knn2 <- drop_na(df_knn2)
+
 
 # Set seed
 set.seed(123)
@@ -902,7 +1119,7 @@ knnFit_x
 
 # Check the metrics on the test set
 Predictions_knnFit_x <- predict(knnFit_x, newdata = knn_test_x)
-ASE_x <- mean((Predictions_knnfit_x - knn_test_x$life_expectancy)^2)
+ASE_x <- mean((Predictions_knnFit_x - knn_test_x$life_expectancy)^2)
 ASE_x
 
 # Performance measurement
@@ -926,7 +1143,7 @@ knnFit2_x
 
 # Check the metrics on the test set
 Predictions_knnFit2_x <- predict(knnFit2_x, newdata = knn_test_x)
-ASE_x <- mean((Predictions_knnfit3_x - knn_test_x$life_expectancy)^2)
+ASE_x <- mean((Predictions_knnFit2_x - knn_test_x$life_expectancy)^2)
 ASE_x
 
 # Performance measurement
@@ -952,7 +1169,7 @@ knnFit3_x
 
 # Check the metrics on the test set
 Predictions_knnFit3_x <- predict(knnFit3_x, newdata = knn_test_x)
-ASE_3x <- mean((Predictions_knnfit3_x - knn_test_x$life_expectancy)^2)
+ASE_3x <- mean((Predictions_knnFit3_x - knn_test_x$life_expectancy)^2)
 ASE_3x
 
 # Performance measurement
@@ -1078,8 +1295,6 @@ abline(0,1)
 plot(yhat.rf2_x,tree_test_x$life_expectancy)
 abline(0,1)
 ```
-
-
 
 ## Objective 1
 
