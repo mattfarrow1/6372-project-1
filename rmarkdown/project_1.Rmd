@@ -21,13 +21,13 @@ library(randomForest)
 ## Introduction
 
 Using the World Health Organization (WHO) data compiled by Kumar Rajarshi, Deeksha Russell, and Duan Wang, we developed three different models:
-- The first model was designed to be easily intepreted using linear regression
-- The second model was designed to be used as a predictive tool using linear regression
-- The third model was developed using non-parametric methods for prediction
+- The first model was designed to be easily interpreted using linear regression.
+- The second model was designed to be used as a predictive tool using linear regression.
+- The third model was developed using non-parametric methods for prediction.
 
 ## Data Description
 
-Description and context of the Life Expectancy (WHO) data set can be found [here](https://www.kaggle.com/kumarajarshi/life-expectancy-who). Data has been compiled from several different data sets into a final data set that represents health factors for 193 countries between the years of 2000-2015.
+The description and context of the Life Expectancy (WHO) data set can be found [here](https://www.kaggle.com/kumarajarshi/life-expectancy-who). Data has been compiled from several different data sets into a final data set that represents health factors for 193 countries between the years of 2000-2015.
 
 ```{r load-data, echo=FALSE, message=FALSE}
 # Load data
@@ -426,38 +426,23 @@ final_model <-
       income_composition_of_resources,
     data = df_interp
 )
+```
 
+### Inspect Model and get MSE
+
+```{r}
 # Final model summary
 final_model_summary <- summary(final_model)
+final_model_summary
 
 # Get MSE
 mean(final_model_summary$residuals ^ 2)
 
-```
+# Augment model
+final_model_aug <- broom::augment(final_model)
 
-### Work on ASE
-
-```{r eval=FALSE}
-###############
-# WORK ON ASE
-testASE_b <- c()
-for (i in 1:16) {
-  predictions <-
-    predict.regsubsets(object = regfit_bwd_2,
-                       newdata = test,
-                       id = i)
-  testASE[i] <- mean((test$life_expectancy - predictions) ^ 2)
-}
-par(mfrow = c(1, 1))
-plot(1:16,
-     testASE,
-     type = "l",
-     xlab = "# of predictors",
-     ylab = "test vs train ASE")
-index <- which(testASE == min(testASE))
-points(index, testASE[index], col = "red", pch = 10)
-rss <- summary(regfit_bwd_2)$rss
-lines(1:16, rss / 518, lty = 3, col = "blue") # Dividing by n since ASE=RSS/sample size
+# Confidence intervals
+confint(final_model)
 ```
 
 ### Check Diagnostics
@@ -492,6 +477,10 @@ plot(df_interp$life_expectancy,
 ```
 
 $Life~Expectancy = 47.106 - 0.013(Adult~Mortality) + 0.289(Total~Expenditure) - 0.911(HIV/AIDS) + 36.649(Income~Composition~of~Resources)$
+
+### Interpretation of Regression Coefficients
+
+We are 95% confident that the model's intercept is between (45.41, 48.689) and the true regression coefficient's for the predicted variables are: adult mortality (-0.016, -0.01), total expenditure (0.183, 0.359), HIV/AIDS (-1.062, -0.772), and income composition of resources (34.999, 38.894).
 
 ## Linear Prediction Model
 
