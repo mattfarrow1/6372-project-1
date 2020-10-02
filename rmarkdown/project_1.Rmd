@@ -201,6 +201,7 @@ Our feature engineering dropped almost all of the records from 2015. Let's go wi
 
 ```{r}
 df_interp <- df_interp %>% filter(year %in% 2011:2014)
+
 ```
 
 ## Build the Model
@@ -689,6 +690,9 @@ For the KNN model, we will try to impute some values based on the distribution (
 ```{r}
 # Copy the data
 df_knn <- df_clean
+#Make new data set that does not impute values for comparison
+df_knn2 <- df_clean
+df_knn2 <- drop_na(df_knn2)
 
 # Impute the data set
 df_knn <- df_knn %>%
@@ -733,6 +737,19 @@ inTraining <-
                       list = FALSE)
 knn_train  <- df_knn_standard[inTraining, ]
 knn_test   <- df_knn_standard[-inTraining, ]
+
+# Perform same splits for data with NA's removed
+# Standardize the data to prep for KNN first - everything except life expectancy
+preProcValues_2 <- preProcess(df_knn2[, -4], method = c("scale"))
+df_knn_standard2 <- predict(preProcValues_2, df_knn2)
+
+# Split training/test data sets
+inTraining2 <-
+  createDataPartition(df_knn_standard2$life_expectancy,
+                      p = 0.75,
+                      list = FALSE)
+knn_train_na  <- df_knn_standard2[inTraining2, ]
+knn_test_na   <- df_knn_standard2[-inTraining2, ]
 ```
 
 
@@ -745,9 +762,9 @@ set.seed(567)
 ctrl <-
   trainControl(
     method = "repeatedcv",
-    number = 10,
-    repeats = 5,
-    returnResamp = "all"
+    number = 10, # 10-fold CV
+    repeats = 5, #repeat 5 times
+    returnResamp = "all" #return all metrics
   ) 
 
 # Run everything with the train control above
@@ -757,18 +774,18 @@ knnFit <-
     data = knn_train,
     method = "knn",
     trControl = ctrl,
-    tuneLength = 10
+    tuneLength = 10 #run for 10 different k's
   )
 knnFit
 
 # Check the metrics on the test set
 Predictions_knn5 <- predict(knnFit, newdata = knn_test)
+ASE_knn5 <- mean((Predictions_knn5 - knn_test$life_expectancy)^2)
+ASE_knn5
 
 # Performance measurement
 postResample(knn_test$life_expectancy, Predictions_knn5)
 
-# Set parameters for trellis displays
-trellis.par.set(caretTheme())
 
 # Plotting
 plot(knnFit, main = "knnFit Results")  
@@ -782,18 +799,17 @@ knnFit2 <-
     data = knn_train,
     method = "knn",
     trControl = ctrl,
-    tuneGrid = expand.grid(k = c(1, 3, 5))
+    tuneGrid = expand.grid(k = c(1, 3, 5)) #run only with k = 1, 3, 5
   )
 knnFit2
 
 # Check the metrics on the test set
 Predictions_knn3 <- predict(knnFit2, newdata = knn_test)
+ASE_knn3 <- mean((Predictions_knn3 - knn_test$life_expectancy)^2)
+ASE_knn3
 
 # Performance measurement
 postResample(knn_test$life_expectancy, Predictions_knn3)
-
-# Set parameters for trellis displays
-trellis.par.set(caretTheme())
 
 # Plotting
 plot(knnFit2, main = "knnFit2 Results")  
@@ -801,7 +817,32 @@ plot(knnFit2, metric = "Rsquared", main = "knnFit2 Results (R-Squared)")
 plot(knnFit2, metric = "MAE", main = "knnFit2 Results (MAE)")
 ```
 
-Based on our training data set, we have surprisingly good results with the imputed data set and all of the predictors. Our RMSE is around 3 and our Rsquared is in the 90's. 
+Based on our training data set, we have surprisingly good results with the imputed data set and all of the predictors. Our RMSE is around 3 and our Rsquared is in the 90's. Since the Rsquared is so high, there is risk of over-fit. Let's also run another model using our KNN data set where we just removed the `NA` values instead of imputing them.
+
+```{r}
+
+# Run knn on data set with NA's removed
+knnFit_na <-
+  train(
+    life_expectancy ~ .,
+    data = knn_train_na,
+    method = "knn",
+    trControl = ctrl,
+    tuneLength = 10 #run through 10 different k's
+  )
+knnFit_na
+
+# Check the metrics on the test set
+Predictions_knn_na <- predict(knnFit_na, newdata = knn_test_na)
+ASE_knn_na <- mean((Predictions_knn_na - knn_test_na$life_expectancy)^2)
+ASE_knn_na
+
+# Performance measurement
+postResample(knn_test_na$life_expectancy, Predictions_knn_na)
+
+```
+
+Even with a smaller data set, the metrics are still pretty good but we do see some decline in Rquared and an increase in RMSE and ASE. 
 
 ## Variable Selection for KNN
 
@@ -828,26 +869,20 @@ knnFit3
 Predictions_knnfit3 <- predict(knnFit3,newdata=knn_test)
 #performance measurement
 postResample(knn_test$life_expectancy,Predictions_knnfit3)
+ASE_knn3 <- mean((Predictions_knnfit3 - knn_test$life_expectancy)^2)
+ASE_knn3
 
 plot(knnFit3)  
 plot(knnFit3, metric = "Rsquared")
 plot(knnFit3, metric = "MAE")
 ```
 
-```{r}
-#visualize a plot of all MAE overlaid
-
-#ggplot(df, aes(x)) +                    # basic graphical object
-#  geom_line(aes(y=y1), colour="red") +  # first layer
-#  geom_line(aes(y=y2), colour="green")  # second layer
-
-```
 
 We see that using all of the predictors and then comparing with just the four ones we deemed important from our first model (which was on a much more limited data set) gives us approximately the same adj R2 value and RMSE. When applying to our test data set, it does not appear that our models are over-fitting as we do not see a big shift in our metrics, even though an adj R2 in the 90's is normally a warning sign for an over-fitting model.
 
 ## Check for Over Fit
 
-Let's create another train/test split for our KNN models to verify our metrics and confirm there is no over-fitting, as we are suspicious of the high Rsquared values which are typically indicative of overfit.
+Let's create one more train/test split for our KNN models to verify our metrics and confirm there is no over-fitting, as we are suspicious of the high Rsquared values which are typically indicative of overfit.
 
 ```{r}
 # Split training/test data sets - round 2
@@ -872,6 +907,8 @@ knnFit_x
 
 # Check the metrics on the test set
 Predictions_knnFit_x <- predict(knnFit_x, newdata = knn_test_x)
+ASE_x <- mean((Predictions_knnfit_x - knn_test_x$life_expectancy)^2)
+ASE_x
 
 # Performance measurement
 postResample(knn_test_x$life_expectancy, Predictions_knnFit_x)
@@ -894,6 +931,8 @@ knnFit2_x
 
 # Check the metrics on the test set
 Predictions_knnFit2_x <- predict(knnFit2_x, newdata = knn_test_x)
+ASE_x <- mean((Predictions_knnfit3_x - knn_test_x$life_expectancy)^2)
+ASE_x
 
 # Performance measurement
 postResample(knn_test_x$life_expectancy, Predictions_knnFit2_x)
@@ -918,9 +957,12 @@ knnFit3_x
 
 # Check the metrics on the test set
 Predictions_knnFit3_x <- predict(knnFit3_x, newdata = knn_test_x)
+ASE_3x <- mean((Predictions_knnfit3_x - knn_test_x$life_expectancy)^2)
+ASE_3x
 
 # Performance measurement
 postResample(knn_test_x$life_expectancy, Predictions_knnFit3_x)
+
 
 # Plotting
 plot(knnFit3_x, main = "knnFit2 Results")  
@@ -982,6 +1024,12 @@ yhat.rf2 <- predict(rfFit2, newdata = tree_test[, -1])
 postResample(tree_test$life_expectancy, yhat.rf)
 postResample(tree_test$life_expectancy, yhat.rf2)
 
+ASE_rf <- mean((yhat.rf - tree_test$life_expectancy)^2)
+ASE_rf
+
+ASE_rf2 <- mean((yhat.rf2 - tree_test$life_expectancy)^2)
+ASE_rf2
+
 plot(yhat.rf, tree_test$life_expectancy)
 abline(0,1)
 
@@ -989,7 +1037,9 @@ plot(yhat.rf2,tree_test$life_expectancy)
 abline(0,1)
 ```
 
-## Check for overfit
+The random forest model that includes all predictors has smaller ASE than the random forest model that only includes the four important variables we used in our interpretable model.
+
+## Check for overfit again
 
 Let's do another train/test split also for the random forest to check for overfitting, as the Rsquared values for RF are much higher than KNN.
 
@@ -1033,6 +1083,8 @@ abline(0,1)
 plot(yhat.rf2_x,tree_test_x$life_expectancy)
 abline(0,1)
 ```
+
+
 
 ## Objective 1
 
