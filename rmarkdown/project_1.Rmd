@@ -511,6 +511,8 @@ df_clean %>%
        y = "Life Expectancy") +
   theme_ipsum()
 
+ggsave(here::here("images", "pred-mod-hepb.png"))
+
 # total expenditure
 df_clean %>%
   ggplot(aes(x = total_expenditure, y = life_expectancy)) +
@@ -520,6 +522,8 @@ df_clean %>%
        x = "Total Expenditure",
        y = "Life Expectancy") +
   theme_ipsum()
+
+ggsave(here::here("images", "pred-mod-expen.png"))
 
 # alcohol
 df_clean %>%
@@ -531,6 +535,8 @@ df_clean %>%
        y = "Life Expectancy") +
   theme_ipsum()
 
+ggsave(here::here("images", "pred-mod-alcohol.png"))
+
 # income composition of resources
 df_clean %>%
   ggplot(aes(x = income_composition_of_resources, y = life_expectancy)) +
@@ -541,6 +547,8 @@ df_clean %>%
        y = "Life Expectancy") +
   theme_ipsum()
 
+ggsave(here::here("images", "pred-mod-inc-comp.png"))
+
 # schooling
 df_clean %>%
   ggplot(aes(x = schooling, y = life_expectancy)) +
@@ -550,6 +558,8 @@ df_clean %>%
        x = "Schooling",
        y = "Life Expectancy") +
   theme_ipsum()
+
+ggsave(here::here("images", "pred-mod-school.png"))
 ```
 
 The trend looks pretty flat for `hepatitis_b`, `total_expenditure`, and `alcohol` so I think it is safe for us to go ahead and remove these columns. However, there appears to be some relationship for `schooling` and possibly for `income composition of resources` as well, so instead of imputing these values let's go ahead and remove the `NA`'s for these two variables.
