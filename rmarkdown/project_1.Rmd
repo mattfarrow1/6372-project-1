@@ -2,6 +2,8 @@
 title: '6372: Project 1'
 author: "Megan Ball, Matt Farrow, Neddy Nyatome"
 output: bookdown::html_document2
+editor_options: 
+  chunk_output_type: inline
 ---
 
 ```{r setup, include=FALSE}
@@ -61,7 +63,7 @@ df_clean %>%
   ggplot(aes(sample = life_expectancy)) +
   geom_qq(pch = 21, size = 3, na.rm = TRUE) +
   geom_qq_line(color = "indianred", na.rm = TRUE) +
-  labs(title = "Quantile-Quantile Plot of Life Expectancy",
+  labs(title = "Q-Q Plot of Life Expectancy",
        x = "Theoretical",
        y = "Sample") +
   theme_ipsum()
@@ -901,7 +903,7 @@ We will proceed with the imputed data set we used in our predictive model above.
 df_knn <- df_predict2
 
 #Make new data set that does not impute values for comparison
-df_knn2 <- df_clean
+df_knn2 <- df_clean %>% select(-c(hepatitis_b))
 df_knn2 <- drop_na(df_knn2)
 
 
@@ -1170,6 +1172,7 @@ tree_test   <- df_knn[-inTraining,]
 tree1 <- tree(life_expectancy ~ ., data = tree_train[, -1])
 summary(tree1)
 plot(tree1)
+mean((tree1$y - tree_train$life_expectancy) ^ 2)
 
 # Check tree performance
 cv.tree1 <- cv.tree(tree1)
