@@ -490,12 +490,12 @@ We are 95% confident that the model's intercept is between (45.41, 48.689) and t
 
 # Neddy's Predictive Model
 
-```{r}
-# Best Subset Selection ---------------------------------------------------
+## Best Subset Selection
 
+```{r}
 # Remove all rows with an NA
-df_clean <- na.omit(df_clean)
-sum(is.na(df_clean))
+# df_clean <- na.omit(df_clean)
+# sum(is.na(df_clean))
 
 
 # Maximum number of variables to consider
@@ -528,9 +528,11 @@ plot(regfit_full, scale = "adjr2")
 plot(regfit_full, scale = "Cp")
 plot(regfit_full, scale = "bic")
 coef(regfit_full, consider)
+```
 
-# Forward and Backward Stepwise Selection ---------------------------------
+## Forward and Backward Stepwise Selection
 
+```{r}
 # Forward
 regfit_fwd <- regsubsets(life_expectancy ~ ., data = df_clean, method = "forward")
 summary(regfit_fwd)
@@ -543,10 +545,11 @@ summary(regfit_bwd)
 coef(regfit_full, consider)
 coef(regfit_fwd, consider)
 coef(regfit_bwd, consider)
+```
 
-# Choosing Among Models ---------------------------------------------------
+## Choosing Among Models
 
-
+```{r}
 # Build test and training data sets
 set.seed(100) 
 
@@ -597,12 +600,11 @@ final_model <-
 
 # Final model summary
 summary(final_model)
+```
 
+## Evaluate the Model Metrics and Predict Using Test Data
 
-
-
-#evaluate the model metrics and predict using test data 
-
+```{r}
 #Step 1 - create the evaluation metrics function
 
 eval_metrics = function(model, df, predictions, target){
@@ -614,8 +616,6 @@ eval_metrics = function(model, df, predictions, target){
   print(adj_r2) #Adjusted R-squared
   print(as.character(round(sqrt(sum(resids2)/N), 2))) #RMSE
 }
-
-
 
 #this is out best training model that we will use for prediction 
 
@@ -641,7 +641,6 @@ train_dummies = predict(dummies, newdata = train[,cols_reg])
 
 test_dummies = predict(dummies, newdata = test[,cols_reg])
 
-
 print(dim(train_dummies)); print(dim(test_dummies))
 lambdas <- 10^seq(2, -3, by = -.1)
 #create the training data matrices for x and y
@@ -650,7 +649,6 @@ y_train = train$life_expectancy
 
 x_test = as.matrix(test_dummies)
 y_test = test$life_expectancy
-
 
 # Setting alpha = 1 implements lasso regression
 lasso_reg <- cv.glmnet(x, y_train, alpha = 1, lambda = lambdas, standardize = TRUE, nfolds = 5)
