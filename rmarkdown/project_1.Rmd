@@ -510,7 +510,7 @@ df_interp %>%
        y = "Life Expectancy")
 
 df_interp %>% 
-  ggplot(aes(x = adult_mortality, y = life_expectancy)) +
+  ggplot(aes(x = income_composition_of_resources, y = life_expectancy)) +
   geom_jitter(alpha = 0.3) +
   geom_smooth() +
   labs(title = "Income Comp. of Resources vs. Life Expectancy",
