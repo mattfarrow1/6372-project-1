@@ -240,12 +240,17 @@ names(reg_summary)
 
 # What are the R-squared values?
 reg_summary$rsq
+
+#what about ASE?
+reg_summary$rss
+ASE <- (reg_summary$rss)/684
+
 ```
 
 ## Plot the RSS, adjusted $R^2$, $C_p$, and BIC for all Models
 
 ```{r echo=FALSE}
-par(mfrow = c(2, 2))
+par(mfrow = c(2, 3))
 plot(reg_summary$rss,
      xlab = "Number of Variables",
      ylab = "RSS",
@@ -282,6 +287,19 @@ plot(reg_summary$bic,
 points(
   5,
   reg_summary$bic[which.min(reg_summary$bic)],
+  col = "red",
+  cex = 2,
+  pch = 20
+)
+
+#which.min(((reg_summary$rss)/684))
+plot((reg_summary$rss)/684,
+     xlab = "Number of Variables",
+     ylab = "ASE",
+     type = "l")
+points(
+  15,
+  ((reg_summary$rss)/684)[which.min((reg_summary$rss)/684)],
   col = "red",
   cex = 2,
   pch = 20
@@ -366,7 +384,7 @@ for (i in 1:8) {
 ```
 
 ```{r}
-# Find the best model
+# Find the best model using min ASE
 val_errors
 coef(regfit_best, which.min(val_errors))
 ```
@@ -381,7 +399,7 @@ predict_regsubsets <- function(object, newdata, id, ...) {
   mat[, xvars] %*% coefi
 }
 
-# Perform best subset selection on the full data set, and select the best model.
+# Perform best subset selection on the full data set, and select the best model using ASE
 regfit_best <- regsubsets(life_expectancy ~ ., data = df_interp[,-1])
 coef(regfit_best, which.min(val_errors))
 ```
@@ -465,7 +483,51 @@ lines(c(0, 90), c(0, 90), col = "red")
 
 par(mfrow=c(2,2))
 plot(final_model)
+
+#verify linearity of our chosen variables
+df_interp %>% 
+  ggplot(aes(x = adult_mortality, y = life_expectancy)) +
+  geom_jitter(alpha = 0.3) +
+  geom_smooth() +
+  labs(title = "Adult Mortality vs. Life Expectancy",
+       x = "Adult Mortality",
+       y = "Life Expectancy")
+
+df_interp %>% 
+  ggplot(aes(x = total_expenditure, y = life_expectancy)) +
+  geom_jitter(alpha = 0.3) +
+  geom_smooth() +
+  labs(title = "Total Expenditure vs. Life Expectancy",
+       x = "Total Expenditure",
+       y = "Life Expectancy")
+
+df_interp %>% 
+  ggplot(aes(x = hiv_aids, y = life_expectancy)) +
+  geom_jitter(alpha = 0.3) +
+  geom_smooth() +
+  labs(title = "HIV/AIDS vs. Life Expectancy",
+       x = "HIV/AIDS",
+       y = "Life Expectancy")
+
+df_interp %>% 
+  ggplot(aes(x = adult_mortality, y = life_expectancy)) +
+  geom_jitter(alpha = 0.3) +
+  geom_smooth() +
+  labs(title = "Income Comp. of Resources vs. Life Expectancy",
+       x = "Income Comp. of Resources ",
+       y = "Life Expectancy")
+
 ```
+
+## Influential Data Point check
+
+```{r}
+#check rows 454, 51, 588, 684, 549 as they show higher residuals/leverage
+df_interp[c(51,454,588,684,549),c(1:5,12,14,16)]
+
+
+```
+Our outliers include Bangladesh in 2012, Niger in 2013, Swaziland in 2011, Zimbabwe in 2011, and Sierra Leone in 2014. Sierra Leone in 2014 has a lower than average life expectancy of 48.1 years, and Bangladesh has a higher than average life expectancy at 77 years (which is seemingly rare for a developing country in this data set). The HIV/AIDs rate for Swaziland and Zimbabwe are notably high for these years, but it does not appear to be due to any anomaly in the data. 
 
 ## Fit our Model to our Data Set
 
@@ -586,7 +648,7 @@ test[,cols] = predict(pre_proc_val, test[,cols])
 summary(train)
 
 
-#check for multicolinearity
+#check for multicollinearity
 #note the highly correlated variables 
 # MF: the Performance Analytics package is required for chart.Correlation. Also,
 # the original my_data object contains status which, as a non-numeric value
@@ -1122,7 +1184,7 @@ mean(predict_model2_sum$residuals ^ 2)
 
 Make determination for which model to use above (imputed versus remove NA - metrics are not that different). What else can we do to avoid overfit?
 
-## Check Residuals (just for fun)
+## Check Residuals and Diagnostics
 
 ```{r echo=FALSE}
 par(mfrow = c(1, 1))
@@ -1137,6 +1199,11 @@ lines(c(0, 90), c(0, 90), col = "red")
 par(mfrow=c(2,2))
 plot(predict_model2)
 ```
+## Check Influential Data Points
+
+```{r}
+
+```{r}
 
 ## KNN Model
 
