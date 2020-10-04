@@ -1,7 +1,7 @@
 ---
 title: '6372: Project 1'
 author: "Megan Ball, Matt Farrow, Neddy Nyatome"
-output: bookdown::html_document2
+output: html_document
 editor_options: 
   chunk_output_type: inline
 ---
@@ -77,13 +77,13 @@ df_clean$country <- as_factor(df_clean$country)
 df_clean$status  <- as_factor(df_clean$status)
 ```
 
-## Check for Correlation {-}
+## Check for Correlation
 
-We next moved into looking at correlation (Figure \@ref(fig:corr-1)). We began examining various correlation matrices to determine whether there were variable(s) that should be addressed, and started by removing redundant variables and picking ones with fewer `NA` values (Figure \@ref(fig:corr-2). 
+We next moved into looking at correlation. We began examining various correlation matrices to determine whether there were variable(s) that should be addressed, and started by removing redundant variables and picking ones with fewer `NA` values. 
 
-Finally, we looked at what happens when we also remove `population`, since it has minimal correlation to `life_expectancy` (Figure \@ref(fig:corr-3).
+Finally, we looked at what happens when we also remove `population`, since it has minimal correlation to `life_expectancy`.
 
-```{r correlation, message=FALSE, warning=FALSE, echo=FALSE, fig.show='hide'}
+```{r correlation, message=FALSE, warning=FALSE, echo=FALSE}
 # Run correlations and save output as images to be used in the appendix.
 ggcorr(
   df_clean,
@@ -95,7 +95,7 @@ ggcorr(
   hjust = 1
 )
 
-ggsave(here::here("images", "correlation 1.png"))
+# ggsave(here::here("images", "correlation 1.png"))
 
 df_clean %>% 
   select(-c(under_five_deaths, gdp, thinness_1_19_years)) %>% 
@@ -108,7 +108,7 @@ df_clean %>%
   hjust = 1
 )
 
-ggsave(here::here("images", "correlation 2.png"))
+# ggsave(here::here("images", "correlation 2.png"))
 
 df_clean %>% 
   select(-c(under_five_deaths, gdp, thinness_1_19_years, population)) %>% 
@@ -121,7 +121,7 @@ df_clean %>%
   hjust = 1
 )
 
-ggsave(here::here("images", "correlation 3.png"))
+# ggsave(here::here("images", "correlation 3.png"))
 ```
 
 We'll proceed, dropping the columns we've looked at.
@@ -133,7 +133,7 @@ df_clean <- df_clean %>%
 
 ## Deal with Missing Values {-}
 
-Our next task was to address the missing values in the data set (Figure \@ref(fig:missing-1)). We dropped all rows where life expectancy is `NA`, and limited the scope of our analysis to not include these countries (Figure \@ref(fig:missing-2)).
+Our next task was to address the missing values in the data set. We dropped all rows where life expectancy is `NA`, and limited the scope of our analysis to not include these countries.
 
 ```{r echo=FALSE, fig.show='hide'}
 # Check for missing values
@@ -141,10 +141,11 @@ tibble(variable = names(colSums(is.na(df_clean))),
        missing = colSums(is.na(df_clean))) %>% 
   gt() %>% 
   tab_header(title = "Missing Values in Data") %>% 
-  gtsave(here::here("images", "missing-1.png"))
+  # gtsave(here::here("images", "missing-1.png")) %>% 
+  {.}
 
 # Check which countries have NA rows for life expectancy
-df_clean$country[which(is.na(df_clean$life_expectancy))]
+as_tibble(df_clean$country[which(is.na(df_clean$life_expectancy))])
 
 # Drop all rows where life expectancy is NA
 df_clean <- df_clean %>% 
@@ -155,7 +156,8 @@ tibble(variable = names(colSums(is.na(df_clean))),
        missing = colSums(is.na(df_clean))) %>% 
   gt() %>% 
   tab_header(title = "Missing Values in Data") %>% 
-  gtsave(here::here("images", "missing-2.png"))
+  # gtsave(here::here("images", "missing-2.png")) %>% 
+  {.}
 ```
 
 We have now excluded these countries from our scope: Cook Islands, Dominica, Marshall Islands, Monaco, Nauru, Niue, Palau, Saint Kitts and Nevis, San Marino, and Tuvalu.
@@ -173,9 +175,9 @@ df_clean %>%
   arrange(desc(missing))
 ```
 
-In looking at the relationship between Hepatitis B and Life Expectancy (Figure \@ref(fig:hep-life)), our options are to either drop all of the `NA`'s, impute the values, or fill with `0`'s. For our interpretable model, we made the decision to drop the `hepatitis_b` variable along with the remainder of the `NA`'s and we will revisit them for our predictive model (Figure \@ref(fig:missing-3)).
+In looking at the relationship between Hepatitis B and Life Expectancy, our options are to either drop all of the `NA`'s, impute the values, or fill with `0`'s. For our interpretable model, we made the decision to drop the `hepatitis_b` variable along with the remainder of the `NA`'s and we will revisit them for our predictive model.
 
-```{r echo=FALSE, warning=FALSE, fig.show='hide'}
+```{r echo=FALSE, warning=FALSE}
 # Visualize the relationship to see if it looks significant
 df_clean %>% 
   ggplot(aes(x = hepatitis_b, y = life_expectancy)) +
@@ -185,7 +187,7 @@ df_clean %>%
        x = "Hepatitis B",
        y = "Life Expectancy")
 
-ggsave(here::here("images", "hepatitis-lifeexp.png"))
+# ggsave(here::here("images", "hepatitis-lifeexp.png"))
 
 # Drop hepatitis B variable 
 df_interp <- df_clean %>% 
@@ -198,10 +200,11 @@ df_interp <- na.omit(df_interp)
 tibble(variable = names(colSums(is.na(df_interp))),
        missing = colSums(is.na(df_interp))) %>% 
   gt() %>% 
-  gtsave(here::here("images", "missing-3.png"))
+  # gtsave(here::here("images", "missing-3.png")) %>% 
+  {.}
 ```
 
-## Analysis of Years {-}
+## Analysis of Years
 
 Now that we've subsetted our variables and dealt with `NA`'s, we noticed that our feature engineering dropped almost all of the records from 2015. After a number of looks at the data, we decided to only use the most recent "good" sample size (2011-2014).
 
@@ -210,7 +213,7 @@ df_interp %>% count(year)
 df_interp <- df_interp %>% filter(year %in% 2011:2014)
 ```
 
-# Build the Model {-}
+# Build the Model
 
 Now that we've finished our feature engineering, let's start building our interpretable model.
 
@@ -239,7 +242,7 @@ names(reg_summary)
 reg_summary$rsq
 ```
 
-## Plot the RSS, adjusted $R^2$, $C_p$, and BIC for all Models {-}
+## Plot the RSS, adjusted $R^2$, $C_p$, and BIC for all Models
 
 ```{r echo=FALSE}
 par(mfrow = c(2, 2))
@@ -300,7 +303,7 @@ The model with the lowest BIC is the five-variable model that contains `adult_mo
 coef(regfit_full, 5)
 ```
 
-## Run Forward and Backward Stepwise Selection {-}
+## Run Forward and Backward Stepwise Selection
 
 The coefficients of the full, forward, and backward models all returned the same coefficients.
 
@@ -338,7 +341,7 @@ tibble(
   gt()
 ```
 
-## Choose Using Validation Set {-}
+## Choose Using Validation Set
 
 ```{r warning=FALSE, echo=FALSE}
 # Set seed
@@ -383,7 +386,7 @@ regfit_best <- regsubsets(life_expectancy ~ ., data = df_interp[,-1])
 coef(regfit_best, which.min(val_errors))
 ```
 
-## Choose Using Cross-Validation {-}
+## Choose Using Cross-Validation
 
 ```{r echo=FALSE}
 k <- 10
@@ -464,7 +467,7 @@ par(mfrow=c(2,2))
 plot(final_model)
 ```
 
-## Fit our Model to our Data Set {-}
+## Fit our Model to our Data Set
 
 ```{r echo=FALSE}
 par(mfrow = c(1, 2))
@@ -479,17 +482,217 @@ plot(df_interp$life_expectancy,
      ylab = "Residuals")
 ```
 
-## Interpretation of Regression Coefficients {-}
+## Interpretation of Regression Coefficients
 
 $Life~Expectancy = 47.106 - 0.013(Adult~Mortality) + 0.289(Total~Expenditure) - 0.911(HIV/AIDS) + 36.649(Income~Composition~of~Resources)$
 
 We are 95% confident that the model's intercept is between (45.41, 48.689) and the true regression coefficient's for the predicted variables are: adult mortality (-0.016, -0.01), total expenditure (0.183, 0.359), HIV/AIDS (-1.062, -0.772), and income composition of resources (34.999, 38.894).
 
+# Neddy's Predictive Model
+
+```{r}
+# Best Subset Selection ---------------------------------------------------
+
+# Remove all rows with an NA
+df_clean <- na.omit(df_clean)
+sum(is.na(df_clean))
+
+
+# Maximum number of variables to consider
+consider <- 4
+
+# Fit model
+regfit_full <- regsubsets(life_expectancy ~ ., df_clean[,-1], nvmax = consider)
+
+# Examine regression summary
+reg_summary <- summary(regfit_full)
+names(reg_summary)
+reg_summary$rsq
+
+# Plot RSS, adjusted $R^2$ $C_p$ and BIC for all models
+par(mfrow = c(2, 2))
+plot(reg_summary$rss, xlab = "Number of Variables", ylab = "RSS", type = "l")
+plot(reg_summary$adjr2, xlab = "Number of Variables", ylab = "Adjusted RSq", type = "l")
+which.max(reg_summary$adjr2)
+points(consider, reg_summary$adjr2[consider], col = "red", cex = 2, pch = 20)
+plot(reg_summary$cp, xlab = "Number of Variables", ylab = "Cp", type = "l")
+which.min(reg_summary$cp)
+points(consider, reg_summary$cp[consider], col = "red", cex = 2, pch = 20)
+which.min(reg_summary$bic)
+plot(reg_summary$bic, xlab = "Number of Variables", ylab = "BIC", type = "l")
+points(consider, reg_summary$bic[consider], col = "red", cex = 2, pch = 20)
+
+# Display selected variables for the best model with a given number of predictors
+plot(regfit_full, scale = "r2")
+plot(regfit_full, scale = "adjr2")
+plot(regfit_full, scale = "Cp")
+plot(regfit_full, scale = "bic")
+coef(regfit_full, consider)
+
+# Forward and Backward Stepwise Selection ---------------------------------
+
+# Forward
+regfit_fwd <- regsubsets(life_expectancy ~ ., data = df_clean, method = "forward")
+summary(regfit_fwd)
+
+# Backward
+regfit_bwd <- regsubsets(life_expectancy ~ ., data = df_clean, method = "backward")
+summary(regfit_bwd)
+
+# Compare coefficients
+coef(regfit_full, consider)
+coef(regfit_fwd, consider)
+coef(regfit_bwd, consider)
+
+# Choosing Among Models ---------------------------------------------------
+
+
+# Build test and training data sets
+set.seed(100) 
+
+index = sample(1:nrow(df_clean), 0.7*nrow(df_clean)) 
+
+train = df_clean[index,] # Create the training data 
+test = df_clean[-index,] # Create the test data
+
+dim(train)
+dim(test)
+regfit_best <- regsubsets(life_expectancy ~ ., data = df_clean)
+test_mat <- model.matrix(life_expectancy ~ ., data = df_clean)
+
+#standardize the data by scaling the numeric variables 
+
+cols = c('alcohol', 'hepatitis_b', 'measles','bmi','polio','diphtheria','hiv_aids','gdp','thinness_5_9_years','schooling')
+
+pre_proc_val <- preProcess(train[,cols], method = c("center", "scale"))
+
+train[,cols] = predict(pre_proc_val, train[,cols])
+test[,cols] = predict(pre_proc_val, test[,cols])
+
+summary(train)
+
+
+#check for multicolinearity
+#note the highly correlated variables 
+my_data <- train[, c(1-2)]
+chart.Correlation(my_data, histogram=TRUE, pch=19)
+#Checking the VIF
+Auto<-train[,-1]  
+full.model<-lm(life_expectancy~.,data=train)  
+vif(full.model)
+
+# Build the final model using the best subset selection results
+final_model <-
+  lm(
+    life_expectancy ~ status +
+      alcohol +
+      bmi +
+      diphtheria +
+      hiv_aids +
+      gdp +
+      schooling,
+    data = train
+  )
+
+
+# Final model summary
+summary(final_model)
+
+
+
+
+#evaluate the model metrics and predict using test data 
+
+#Step 1 - create the evaluation metrics function
+
+eval_metrics = function(model, df, predictions, target){
+  resids = df[,target] - predictions
+  resids2 = resids**2
+  N = length(predictions)
+  r2 = as.character(round(summary(model)$r.squared, 2))
+  adj_r2 = as.character(round(summary(model)$adj.r.squared, 2))
+  print(adj_r2) #Adjusted R-squared
+  print(as.character(round(sqrt(sum(resids2)/N), 2))) #RMSE
+}
+
+
+
+#this is out best training model that we will use for prediction 
+
+#Step 3 - predicting and evaluating the model on train data
+predictions = predict(final_model, newdata = train)
+eval_metrics(final_model, train, predictions, target = 'life_expectancy')
+
+# Step 4 - predicting and evaluating the model on test data
+
+predictions = predict(final_model, newdata = test)
+eval_metrics(final_model, test, predictions, target = 'life_expectancy')
+
+#lasso
+#will use lib glmet 
+#glmnet does not work with numeric data frames 
+#Step 1 -> we will create a numeric matrix for the training 
+
+cols_reg = c('life_expectancy','alcohol', 'hepatitis_b', 'measles','bmi','polio','diphtheria','hiv_aids','gdp','thinness_5_9_years','schooling')
+
+dummies <- dummyVars(life_expectancy ~ ., data = df_clean[,cols_reg])
+
+train_dummies = predict(dummies, newdata = train[,cols_reg])
+
+test_dummies = predict(dummies, newdata = test[,cols_reg])
+
+
+print(dim(train_dummies)); print(dim(test_dummies))
+lambdas <- 10^seq(2, -3, by = -.1)
+#create the training data matrices for x and y
+x = as.matrix(train_dummies)
+y_train = train$life_expectancy
+
+x_test = as.matrix(test_dummies)
+y_test = test$life_expectancy
+
+
+# Setting alpha = 1 implements lasso regression
+lasso_reg <- cv.glmnet(x, y_train, alpha = 1, lambda = lambdas, standardize = TRUE, nfolds = 5)
+
+# Best optimal lambda 
+lambda_optimal <- lasso_reg$lambda.min 
+lambda_optimal #will give the best optimal value 
+
+#let's train the lasso model 
+lasso_model <- glmnet(x, y_train, alpha = 1, lambda = lambda_optimal, standardize = TRUE)
+#let's make predictions for both test and training
+#also view the evaluation metrics
+
+# Compute R^2 from true and predicted values
+eval_results <- function(true, predicted, df) {
+  SSE <- sum((predicted - true)^2)
+  SST <- sum((true - mean(true))^2)
+  R_square <- 1 - SSE / SST
+  RMSE = sqrt(SSE/nrow(df))
+  
+  
+  # Model performance metrics
+  data.frame(
+    RMSE = RMSE,
+    Rsquare = R_square
+  )
+  
+}
+#predictions
+predictions_train <- predict(lasso_model, s = lambda_best, newx = x)
+eval_results(y_train, predictions_train, train)
+
+predictions_test <- predict(lasso_model, s = lambda_best, newx = x_test)
+eval_results(y_test, predictions_test, test)
+```
+
+
 # Linear Prediction Model
 
 Let's start again with the `df_clean` data set to perform feature engineering. We have already removed at this point variables that are highly correlated and rows/countries with `NA` for life expectancy. This leaves us with 17 other potential predictors and still quite a few `NA` values. We know we cannot have `NA` values to perform Ridge Regression or LASSO so need to either remove them, impute them, or change them to 0.
 
-## Deal with Missing Values {-}
+## Deal with Missing Values
 
 ```{r echo=FALSE}
 # Check for missing values
@@ -513,7 +716,7 @@ df_clean %>%
        y = "Life Expectancy") +
   theme_ipsum()
 
-ggsave(here::here("images", "pred-mod-hepb.png"))
+# ggsave(here::here("images", "pred-mod-hepb.png"))
 
 # total expenditure
 df_clean %>%
@@ -525,7 +728,7 @@ df_clean %>%
        y = "Life Expectancy") +
   theme_ipsum()
 
-ggsave(here::here("images", "pred-mod-expen.png"))
+# ggsave(here::here("images", "pred-mod-expen.png"))
 
 # alcohol
 df_clean %>%
@@ -537,7 +740,7 @@ df_clean %>%
        y = "Life Expectancy") +
   theme_ipsum()
 
-ggsave(here::here("images", "pred-mod-alcohol.png"))
+# ggsave(here::here("images", "pred-mod-alcohol.png"))
 
 # income composition of resources
 df_clean %>%
@@ -549,7 +752,7 @@ df_clean %>%
        y = "Life Expectancy") +
   theme_ipsum()
 
-ggsave(here::here("images", "pred-mod-inc-comp.png"))
+# ggsave(here::here("images", "pred-mod-inc-comp.png"))
 
 # schooling
 df_clean %>%
@@ -561,7 +764,7 @@ df_clean %>%
        y = "Life Expectancy") +
   theme_ipsum()
 
-ggsave(here::here("images", "pred-mod-school.png"))
+# ggsave(here::here("images", "pred-mod-school.png"))
 ```
 
 The trend looks pretty flat for `hepatitis_b`, `total_expenditure`, and `alcohol` so I think it is safe for us to go ahead and remove these columns. However, there appears to be some relationship for `schooling` and possibly for `income composition of resources` as well, so instead of imputing these values let's go ahead and remove the `NA`'s for these two variables.
@@ -611,7 +814,6 @@ df_predict %>% ggplot(aes(x = schooling, y = life_expectancy)) +
 
 ```{r}
 library(glmnet)
-
 # Ridge regression and lasso require the format 'x matrix' and 'y'. The
 # model.matrix() function produces a matrix and automatically transforms
 # qualitative variables into dummy variables.
@@ -886,7 +1088,7 @@ mean(predict_model2_sum$residuals ^ 2)
 
 Make determination for which model to use above (imputed versus remove NA - metrics are not that different). What else can we do to avoid overfit?
 
-## Check residuals just for fun
+## Check Residuals (just for fun)
 
 ```{r echo=FALSE}
 par(mfrow = c(1, 1))
@@ -905,7 +1107,6 @@ plot(predict_model2)
 ## KNN Model
 
 We will proceed with the imputed data set we used in our predictive model above.
-
 
 ```{r}
 
@@ -945,8 +1146,6 @@ inTraining2 <-
 knn_train_na  <- df_knn_standard2[inTraining2, ]
 knn_test_na   <- df_knn_standard2[-inTraining2, ]
 ```
-
-
 
 ```{r}
 # Set seed
@@ -1280,36 +1479,6 @@ abline(0,1)
 ```
 
 # Appendix
-
-## Figures {-}
-
-```{r corr-1, fig.cap="Variable Correlation, Original", echo=FALSE}
-knitr::include_graphics(here::here("images", "correlation 1.png"))
-```
-
-```{r corr-2, fig.cap="Variable Correlation, 1st Iteration", echo=FALSE}
-knitr::include_graphics(here::here("images", "correlation 2.png"))
-```
-
-```{r corr-3, fig.cap="Variable Correlation, 2nd Iteration", echo=FALSE}
-knitr::include_graphics(here::here("images", "correlation 3.png"))
-```
-
-```{r missing-1, fig.cap="Missing Values Analysis, pt. 1", echo=FALSE}
-knitr::include_graphics(here::here("images", "missing-1.png"))
-```
-
-```{r missing-2, fig.cap="Missing Values Analysis, pt. 2", echo=FALSE}
-knitr::include_graphics(here::here("images", "missing-2.png"))
-```
-
-```{r hep-life, fig.cap="Relationship between Hepatitis B and Life Expectancy", echo=FALSE}
-knitr::include_graphics(here::here("images", "hepatitis-lifeexp.png"))
-```
-
-```{r missing-3, fig.cap="Missing Values Analysis, pt. 3", echo=FALSE}
-knitr::include_graphics(here::here("images", "missing-3.png"))
-```
 
 ## R Code {-}
 
