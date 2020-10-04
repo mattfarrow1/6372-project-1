@@ -1029,7 +1029,9 @@ tibble(variable = names(colSums(is.na(df_predict2))),
 
 Based on the histograms and distributions, we decided to impute the median for `polio`, `total_expenditure`, and `diptheria`, the mean for `bmi`, `income_composition_of_resources`, and `schooling`, and 0 for `alcohol` and `thinness_5_9_years`. Now our data set has 2,928 observations with 18 variables including our response variable.
 
-## Ridge Regression 2.0
+## Ridge Regression - Imputed
+
+Run ridge regression and LASSO again using imputed data set.
 
 ```{r}
 # Ridge regression and lasso require the format 'x matrix' and 'y'. The
@@ -1081,6 +1083,8 @@ out2 <- glmnet(x2, y2, alpha = 0)
 predict(out2, type = "coefficients", s = bestlambda2)[1:14,]
 ```
 
+## LASSO - Imputed
+
 ```{r}
 # Fit the lasso model
 lasso_mod2 <- glmnet(x2[train2, ], y2[train2], alpha = 1)
@@ -1103,7 +1107,9 @@ lasso_coef2 <- predict(out2, type = "coefficients", s = bestlambda2)[1:14,]
 lasso_coef2[lasso_coef2 != 0]
 ```
 
-The top 4 variables using LASSO on the imputed data set are similar to the non-imputed data set: `income_composition_of_resources`,`statusDeveloped`, `schooling`, and `hiv_aids`
+The top 4 variables using LASSO on the imputed data set are similar to the non-imputed data set: `income_composition_of_resources`,`statusDeveloped`, `schooling`, and `hiv_aids`. At this point, proceed with model using imputed data set.
+
+## LASSO - Include Country
 
 ```{r}
 # Fit the lasso model with data set including country
@@ -1139,7 +1145,7 @@ lasso_coef3[lasso_coef3 != 0]
 Based on these coefficients, it does appear that country is significant when predicting life expectancy. We removed it from our interpretable model as it would have been incredibly difficult to interpret a model with this many coefficients. However, since our goal is only prediction, let's include country in our final predictive model along with the top 4 variables from LASSO: `income_composition_of_resources`, `statusDeveloped`, `schooling`, and `hiv_aids`.
 
 ```{r}
-#build a linear model using the top 3 variables from LASSO along with country for both imputed data set and removed NA data set
+#build a linear model using the top 4 variables from LASSO along with country for both imputed data set and removed NA data set
 
 # Build the final model using the best subset selection results on the imputed data set
 predict_model1 <-
@@ -1160,8 +1166,39 @@ predict_model1_sum
 # Get MSE
 mean(predict_model1_sum$residuals ^ 2)
 #[1] 4.39226
+```
 
-# Build the final model using the best subset selection results on removed NA data set
+
+## Check Residuals and Diagnostics
+
+```{r echo=FALSE}
+par(mfrow = c(1, 1))
+plot(
+  predict_model1$fitted.values,
+  df_predict2$life_expectancy,
+  xlab = "Predicted Life Expectancy",
+  ylab = "Actual Life Expectancy"
+)
+lines(c(0, 90), c(0, 90), col = "red")
+
+
+plot(predict_model1)
+```
+## Check Influential Data Points
+
+```{r}
+
+#check rows 864, 1875, 1126 as they show higher residuals/leverage
+df_predict2[c(864,1875,1126),c(1:4,14,17)]
+
+```
+
+# Remove Haiti Outlier - 2010 was the year of the devastating earthquake and Eritrea - war was ongoing in 2000
+
+```{r}
+df_predict3 <- df_predict2[-c(1126,864),]
+
+# Build the final model using the best subset selection results on the imputed data set
 predict_model2 <-
   lm(
     life_expectancy ~ 
@@ -1170,7 +1207,7 @@ predict_model2 <-
       status +
       schooling +
       hiv_aids,
-    data = df_predict
+    data = df_predict3
 )
 
 # Final model summary
@@ -1179,33 +1216,25 @@ predict_model2_sum
 
 # Get MSE
 mean(predict_model2_sum$residuals ^ 2)
-#[1] 4.189329
+#[1] 4.11514
 ```
-
-Make determination for which model to use above (imputed versus remove NA - metrics are not that different). What else can we do to avoid overfit?
-
 ## Check Residuals and Diagnostics
 
 ```{r echo=FALSE}
 par(mfrow = c(1, 1))
 plot(
   predict_model2$fitted.values,
-  df_predict$life_expectancy,
+  df_predict3$life_expectancy,
   xlab = "Predicted Life Expectancy",
   ylab = "Actual Life Expectancy"
 )
 lines(c(0, 90), c(0, 90), col = "red")
 
-par(mfrow=c(2,2))
+
 plot(predict_model2)
 ```
-## Check Influential Data Points
 
-```{r}
-
-```{r}
-
-## KNN Model
+# KNN Model
 
 We will proceed with the imputed data set we used in our predictive model above.
 
